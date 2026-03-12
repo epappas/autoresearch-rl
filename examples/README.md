@@ -16,8 +16,6 @@ This folder contains concrete target projects that the scaffold can optimize.
   - Simple in-repo autoresearch-style example (`prepare.py`, `train.py`, `program.md`).
   - Single entrypoint: `run.py`.
 
-- `autoresearch-style-contract/`
-  - Contract validation focused example.
 
 ## Why this exists
 
