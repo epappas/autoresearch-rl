@@ -7,6 +7,8 @@ Minimal production-oriented scaffold for autonomous training-script research loo
 - Safe code-edit sandboxing
 - Fixed-budget comparable evaluations
 - Trace-first observability
+- Next-state-aware scoring (evaluate turn _t_ using state from _t+1_)
+- Dual-signal optimization hooks (evaluative + directional)
 
 ## Layout
 - `src/autoresearch_rl/controller` – run orchestration and state machine
@@ -32,3 +34,13 @@ python scripts/run_once.py --config configs/local.yaml
 - no network in runner (expected to be enforced by runtime/container)
 - hard wall-clock timeout per run
 - every run emits structured JSONL trace
+
+## v0.2 architecture extensions
+- event-driven async pipeline: proposal → trial → judge/score
+- next-state judging with majority vote hooks
+- composite scoring (`val_bpb` + status penalties + evaluative score + hint bonus)
+- richer telemetry (`event_id`, `episode_id`, `sample_type`) and replayable manifests
+
+## Research notes
+- `docs/research/SDFT-Softmax-Divergence-Fine-Tuning.md`
+- `docs/research/SDPO-Self-Distilled-Policy-Optimization.md`
