@@ -3,6 +3,11 @@ experiment:
   target_script: examples/deberta-prompt-injection/train.py
   objective: val_bpb
   mode: minimize
+  comparability:
+    budget_mode: fixed_wallclock
+    expected_budget_s: 1200
+    expected_hardware_fingerprint: null
+    strict: false
 
 sandbox:
   allow_network: true

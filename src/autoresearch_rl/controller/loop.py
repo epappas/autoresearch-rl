@@ -11,6 +11,7 @@ from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.eval.scoring import TrialSignals, score_from_signals
 from autoresearch_rl.policy.baselines import RandomPolicy
 from autoresearch_rl.sandbox.runner import EarlyStopConfig, TrialResult, run_trial
+from autoresearch_rl.telemetry.comparability import ComparabilityPolicy, check_comparability, hardware_fingerprint
 from autoresearch_rl.telemetry.events import emit
 from autoresearch_rl.telemetry.ledger import append_result_row, ensure_results_tsv
 from autoresearch_rl.telemetry.manifest import new_run_id, write_manifest
@@ -47,6 +48,8 @@ def run_loop(
     mutable_file: str = "train.py",
     frozen_file: str = "prepare.py",
     program_path: str = "programs/default.md",
+    trial_timeout_s: int = 30,
+    comparability_policy: ComparabilityPolicy | None = None,
 ) -> LoopResult:
     """Async scaffold loop with proposal -> trial -> judge pipeline.
 
@@ -55,12 +58,22 @@ def run_loop(
       - Uses next-state judging: score turn t after observing trial output from turn t+1.
     """
     episode_id = new_run_id()
-    policy = RandomPolicy(seed=7)
+    proposal_policy = RandomPolicy(seed=7)
     ensure_results_tsv(ledger_path)
     commit = _current_commit_or_local()
 
     # contract files are intentionally explicit for reproducibility.
     _ = (mutable_file, frozen_file, program_path)
+
+    comp_policy = comparability_policy or ComparabilityPolicy(expected_budget_s=trial_timeout_s)
+    hw_fp = hardware_fingerprint()
+    comparable, non_comparable_reason = check_comparability(
+        policy=comp_policy,
+        run_budget_s=trial_timeout_s,
+        run_hardware_fingerprint=hw_fp,
+    )
+    if comp_policy.strict and not comparable:
+        raise ValueError(f"Non-comparable run blocked: {non_comparable_reason}")
 
     proposal_q: queue.Queue[dict] = queue.Queue(maxsize=max(4, max_iterations * 2))
     result_q: queue.Queue[dict] = queue.Queue(maxsize=max(4, max_iterations * 2))
@@ -78,7 +91,7 @@ def run_loop(
             diff = item["diff"]
             trial = run_trial(
                 diff=diff,
-                timeout_s=30,
+                timeout_s=trial_timeout_s,
                 early_stop=early_stop or EarlyStopConfig(enabled=False),
             )
             result_q.put({"iter": i, "diff": diff, "trial": trial})
@@ -90,7 +103,7 @@ def run_loop(
     # Stage 1: generate proposals quickly
     state = {"best_score": None}
     for i in range(max_iterations):
-        diff = policy.propose_diff(state)
+        diff = proposal_policy.propose_diff(state)
         proposal_q.put({"iter": i, "diff": diff})
         emit(trace_path, {"type": "proposal_created", "episode_id": episode_id, "iter": i, "diff_len": len(diff)})
 
@@ -119,6 +132,13 @@ def run_loop(
                 "iter": i,
                 "status": trial.status,
                 "elapsed_s": round(trial.elapsed_s, 3),
+                "training_seconds": round(trial.elapsed_s, 3),
+                "total_seconds": round(trial.elapsed_s, 3),
+                "budget_mode": comp_policy.budget_mode,
+                "fixed_budget_s": trial_timeout_s,
+                "hardware_fingerprint": hw_fp,
+                "comparable": comparable,
+                "non_comparable_reason": non_comparable_reason,
             },
         )
 
@@ -176,11 +196,16 @@ def run_loop(
                 commit=commit,
                 val_bpb=float(previous["parsed"].val_bpb if previous["parsed"].val_bpb is not None else 0.0),
                 memory_gb=0.0,
-                status=str(event["sample_type"]),
+                status=(str(event["sample_type"]) if comparable else "non_comparable"),
                 description="controller_loop_trial",
                 episode_id=episode_id,
                 iter_idx=int(previous["iter"]),
                 score=float(score),
+                budget_mode=comp_policy.budget_mode,
+                budget_s=trial_timeout_s,
+                hardware_fingerprint=hw_fp,
+                comparable=comparable,
+                non_comparable_reason=non_comparable_reason,
             )
 
         previous = current
@@ -225,11 +250,16 @@ def run_loop(
             commit=commit,
             val_bpb=float(previous["parsed"].val_bpb if previous["parsed"].val_bpb is not None else 0.0),
             memory_gb=0.0,
-            status=str(event["sample_type"]),
+            status=(str(event["sample_type"]) if comparable else "non_comparable"),
             description="controller_loop_trial",
             episode_id=episode_id,
             iter_idx=int(previous["iter"]),
             score=float(score),
+            budget_mode=comp_policy.budget_mode,
+            budget_s=trial_timeout_s,
+            hardware_fingerprint=hw_fp,
+            comparable=comparable,
+            non_comparable_reason=non_comparable_reason,
         )
 
     proposal_q.put(stop_token)
