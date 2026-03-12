@@ -21,6 +21,12 @@
 - **Directional signal** (`hint`): concise improvement hint extracted from next-state context
 - **Combined scoring**: val metric + penalties + next-state score + hint bonus
 
+## Comparability policy
+- Default budget mode: `fixed_wallclock`
+- Runs are tagged with `budget_mode`, `budget_s`, and `hardware_fingerprint`
+- Strict mode blocks non-comparable runs (budget/hardware mismatches)
+- Ledger persists comparability flags for auditability
+
 ## Safety posture
 - Diff validation before execution
 - AST policy checks for forbidden imports/calls

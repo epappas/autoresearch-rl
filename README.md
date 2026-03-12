@@ -57,7 +57,14 @@ Run DeBERTa benchmark sweep:
 uv run python scripts/benchmark_deberta_example.py
 ```
 
-Config: `configs/deberta-example.yaml`
+Config: `examples/deberta-prompt-injection/deberta-example.yaml`
+
+## Comparability enforcement
+The scaffold supports strict fair-comparison mode for benchmark runs:
+- `budget_mode: fixed_wallclock`
+- run budget must match configured `expected_budget_s`
+- optional hardware fingerprint lock (`expected_hardware_fingerprint`)
+- strict mode blocks non-comparable runs and records comparability metadata in `results.tsv`
 
 ## Safety defaults
 - mutable scope limited to target file list
@@ -77,6 +84,8 @@ Config: `configs/deberta-example.yaml`
 - Three-file contract doc: `docs/THREE_FILE_CONTRACT.md`
 - Default agent policy: `programs/default.md`
 - Canonical results ledger: `results.tsv` (auto-initialized by loop)
+- Fixed-budget comparability policy: `experiment.comparability` in config
+- Strict contract mode blocks out-of-scope mutations (frozen/program/non-mutable files)
 
 ## Research notes
 - `docs/research/SDFT-Softmax-Divergence-Fine-Tuning.md`

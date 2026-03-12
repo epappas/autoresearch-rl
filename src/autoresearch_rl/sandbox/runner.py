@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from autoresearch_rl.eval.metrics import parse_metrics
+from autoresearch_rl.sandbox.diff_utils import extract_touched_files_from_diff
 from autoresearch_rl.sandbox.validator import validate_diff
 
 
@@ -84,21 +85,6 @@ def _apply_patch_with_git(diff: str, workdir: str, auto_init_git: bool = True) -
     return True, ""
 
 
-def _extract_touched_files_from_diff(diff: str) -> list[str]:
-    touched: list[str] = []
-    seen: set[str] = set()
-    for raw in diff.splitlines():
-        line = raw.strip()
-        if line.startswith("+++ b/") or line.startswith("--- a/"):
-            path = line[6:]
-            if path == "/dev/null" or not path:
-                continue
-            if path not in seen:
-                seen.add(path)
-                touched.append(path)
-    return touched
-
-
 def _rollback_patch_with_git(workdir: str, touched_files: list[str]) -> None:
     # Best-effort rollback scoped ONLY to files touched by the candidate diff.
     if not touched_files:
@@ -153,7 +139,7 @@ def run_trial(
             stderr=v.reason,
         )
 
-    touched_files = _extract_touched_files_from_diff(diff)
+    touched_files = extract_touched_files_from_diff(diff)
 
     patch_applied = False
     if apply_patch:
