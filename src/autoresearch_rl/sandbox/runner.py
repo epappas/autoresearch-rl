@@ -84,9 +84,34 @@ def _apply_patch_with_git(diff: str, workdir: str, auto_init_git: bool = True) -
     return True, ""
 
 
-def _rollback_patch_with_git(workdir: str) -> None:
-    # Best-effort rollback to clean tracked files.
-    _run_git(workdir, "reset", "--hard", "HEAD")
+def _extract_touched_files_from_diff(diff: str) -> list[str]:
+    touched: list[str] = []
+    seen: set[str] = set()
+    for raw in diff.splitlines():
+        line = raw.strip()
+        if line.startswith("+++ b/") or line.startswith("--- a/"):
+            path = line[6:]
+            if path == "/dev/null" or not path:
+                continue
+            if path not in seen:
+                seen.add(path)
+                touched.append(path)
+    return touched
+
+
+def _rollback_patch_with_git(workdir: str, touched_files: list[str]) -> None:
+    # Best-effort rollback scoped ONLY to files touched by the candidate diff.
+    if not touched_files:
+        return
+
+    # Unstage touched files if needed.
+    _run_git(workdir, "reset", "HEAD", "--", *touched_files)
+
+    # Restore tracked paths to HEAD state.
+    _run_git(workdir, "checkout", "--", *touched_files)
+
+    # Remove untracked files among touched paths (e.g., files introduced by patch).
+    _run_git(workdir, "clean", "-f", "--", *touched_files)
 
 
 def _reader_thread(stream, sink: list[str]) -> None:
@@ -116,7 +141,7 @@ def run_trial(
     Notes:
     - Patch application uses `git apply`.
     - If `auto_init_git=True` and no .git is present, runner initializes a local git repo.
-    - If `rollback_patch=True`, tracked files are reset with `git reset --hard HEAD` after run.
+    - If `rollback_patch=True`, rollback is scoped to files touched by the diff only.
     """
     v = validate_diff(diff)
     if not v.ok:
@@ -127,6 +152,8 @@ def run_trial(
             elapsed_s=0.0,
             stderr=v.reason,
         )
+
+    touched_files = _extract_touched_files_from_diff(diff)
 
     patch_applied = False
     if apply_patch:
@@ -203,7 +230,7 @@ def run_trial(
         t_err.join(timeout=1)
 
         if patch_applied and rollback_patch and workdir:
-            _rollback_patch_with_git(workdir)
+            _rollback_patch_with_git(workdir, touched_files=touched_files)
 
     elapsed = time.monotonic() - start
     return TrialResult(

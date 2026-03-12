@@ -62,13 +62,18 @@ def test_apply_patch_and_rollback(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)
     f = repo / "train.py"
+    untouched = repo / "notes.txt"
     f.write_text("x = 1\n", encoding="utf-8")
+    untouched.write_text("base\n", encoding="utf-8")
 
     subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "config", "user.name", "t"], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@x"], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(repo), "add", "train.py"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "add", "train.py", "notes.txt"], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
+
+    # Unrelated dirty change that must survive rollback.
+    untouched.write_text("dirty-unrelated-change\n", encoding="utf-8")
 
     diff = (
         "diff --git a/train.py b/train.py\n"
@@ -91,5 +96,7 @@ def test_apply_patch_and_rollback(tmp_path: Path):
 
     assert r.status == "ok"
     assert r.patch_applied is True
-    # ensure rollback restored tracked file
+    # ensure rollback restored touched file only
     assert f.read_text(encoding="utf-8") == "x = 1\n"
+    # ensure unrelated local modification was NOT wiped
+    assert untouched.read_text(encoding="utf-8") == "dirty-unrelated-change\n"
