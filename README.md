@@ -74,3 +74,4 @@ Config: `configs/deberta-example.yaml`
 ## Research notes
 - `docs/research/SDFT-Softmax-Divergence-Fine-Tuning.md`
 - `docs/research/SDPO-Self-Distilled-Policy-Optimization.md`
+- `docs/research/AutoResearch-RL-Perpetual-Self-Evaluating-RL-Agents.md`
