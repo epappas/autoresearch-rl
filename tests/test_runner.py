@@ -11,6 +11,12 @@ def test_rejects_forbidden_diff():
     assert r.status == "rejected"
 
 
+def test_rejects_missing_command():
+    r = run_trial("diff --git a/train.py b/train.py\n+ x=1", timeout_s=1)
+    assert r.status == "rejected"
+    assert "command_required" in r.stderr
+
+
 def test_early_stop_triggers_on_bad_threshold():
     cmd = [
         "python3",

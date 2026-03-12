@@ -1,17 +1,17 @@
 experiment:
-  name: nanochat-v0
-  max_wall_seconds: 300
+  name: autoresearch-like-v0
+  max_wall_seconds: 20
   target_files:
-    - train.py
+    - examples/autoresearch-like/train.py
   objective: val_bpb
   contract:
-    frozen_file: prepare.py
-    mutable_file: train.py
-    program_file: programs/default.md
+    frozen_file: examples/autoresearch-like/prepare.py
+    mutable_file: examples/autoresearch-like/train.py
+    program_file: examples/autoresearch-like/program.md
     strict: true
   comparability:
     budget_mode: fixed_wallclock
-    expected_budget_s: 300
+    expected_budget_s: 20
     expected_hardware_fingerprint: null
     strict: true
 sandbox:
@@ -25,7 +25,7 @@ telemetry:
   trace_path: traces/events.jsonl
   ledger_path: results.tsv
 policy:
-  provider: "stub"
+  provider: "baseline"
   temperature: 0.4
 eval:
   early_stop:

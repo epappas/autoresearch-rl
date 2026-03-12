@@ -4,6 +4,7 @@ import queue
 import threading
 from dataclasses import dataclass
 import subprocess
+import sys
 
 from autoresearch_rl.controller.contract import ContractConfig, validate_contract_files_exist, validate_diff_against_contract
 from autoresearch_rl.eval.judge import judge_next_state
@@ -95,6 +96,7 @@ def run_loop(
     program_path: str = "programs/default.md",
     contract_strict: bool = True,
     trial_timeout_s: int = 30,
+    trial_command: list[str] | None = None,
     comparability_policy: ComparabilityPolicy | None = None,
 ) -> LoopResult:
     """Async scaffold loop with proposal -> trial -> judge pipeline.
@@ -117,6 +119,8 @@ def run_loop(
     files_ok, files_reason = validate_contract_files_exist(contract)
     if contract.strict and not files_ok:
         raise ValueError(f"Contract validation failed: {files_reason}")
+
+    effective_trial_command = trial_command or [sys.executable, mutable_file]
 
     comp_policy = comparability_policy or ComparabilityPolicy(expected_budget_s=trial_timeout_s)
     hw_fp = hardware_fingerprint()
@@ -156,6 +160,7 @@ def run_loop(
                 trial = run_trial(
                     diff=diff,
                     timeout_s=trial_timeout_s,
+                    command=effective_trial_command,
                     early_stop=early_stop or EarlyStopConfig(enabled=False),
                 )
             result_q.put({"iter": i, "diff": diff, "trial": trial})
