@@ -8,7 +8,7 @@ from autoresearch_rl.eval.judge import judge_next_state
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.eval.scoring import TrialSignals, score_from_signals
 from autoresearch_rl.policy.baselines import RandomPolicy
-from autoresearch_rl.sandbox.runner import TrialResult, run_trial
+from autoresearch_rl.sandbox.runner import EarlyStopConfig, TrialResult, run_trial
 from autoresearch_rl.telemetry.events import emit
 from autoresearch_rl.telemetry.manifest import new_run_id, write_manifest
 
@@ -23,6 +23,7 @@ def run_loop(
     max_iterations: int = 1,
     trace_path: str = "traces/events.jsonl",
     artifacts_dir: str = "artifacts/runs",
+    early_stop: EarlyStopConfig | None = None,
 ) -> LoopResult:
     """Async scaffold loop with proposal -> trial -> judge pipeline.
 
@@ -47,7 +48,11 @@ def run_loop(
 
             i = int(item["iter"])
             diff = item["diff"]
-            trial = run_trial(diff=diff, timeout_s=30)
+            trial = run_trial(
+                diff=diff,
+                timeout_s=30,
+                early_stop=early_stop or EarlyStopConfig(enabled=False),
+            )
             result_q.put({"iter": i, "diff": diff, "trial": trial})
             proposal_q.task_done()
 

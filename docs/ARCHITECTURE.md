@@ -24,6 +24,8 @@
 ## Safety posture
 - Diff validation before execution
 - AST policy checks for forbidden imports/calls
+- Optional git-backed patch apply + rollback in trial runner
+- Optional early-stop gate from online metric thresholds
 - Bounded subprocess timeout in trial runner
 
 ## Next steps
