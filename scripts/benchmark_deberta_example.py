@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -16,7 +17,7 @@ def _run_one(config: dict, lr: float, wd: float, bs: int, epochs: int) -> dict:
     val_file = config["model"]["val_file"]
 
     cmd = [
-        "python3",
+        sys.executable,
         config["experiment"]["target_script"],
         "--model-name",
         str(model),

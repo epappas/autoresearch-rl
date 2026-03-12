@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.sandbox.runner import run_trial
 
@@ -9,7 +11,7 @@ def main() -> None:
     diff = "diff --git a/examples/minimal-trainable-target/train.py b/examples/minimal-trainable-target/train.py\n+ # candidate change"
 
     cmd = [
-        "python3",
+        sys.executable,
         "examples/minimal-trainable-target/train.py",
         "--learning-rate",
         "0.0026",
