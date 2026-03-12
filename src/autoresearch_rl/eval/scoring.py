@@ -45,6 +45,8 @@ def score_from_signals(signals: TrialSignals, weights: ScoreWeights | None = Non
         score += w.timeout_penalty
     elif signals.status == "rejected":
         score += w.timeout_penalty
+    elif signals.status == "early_stopped":
+        score += 0.4
 
     # next-state evaluative signal: +1 helps, -1 hurts, 0 is neutral penalty
     score -= 0.25 * float(signals.eval_score)
