@@ -8,6 +8,10 @@ This folder contains concrete target projects that the scaffold can optimize.
   - Tiny synthetic training project with a real `train.py`.
   - Emits `loss=...` and `val_bpb=...` so the scaffold metric parser works out-of-the-box.
 
+- `deberta-prompt-injection/`
+  - Real Hugging Face fine-tuning target based on DeBERTa.
+  - Includes local JSONL data, a train script, and a scaffold-compatible runner.
+
 ## Why this exists
 
 The scaffold repository is primarily a **control-plane** (proposal → trial → scoring).

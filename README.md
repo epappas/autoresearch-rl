@@ -29,15 +29,17 @@ cp configs/example.yaml configs/local.yaml
 python scripts/run_once.py --config configs/local.yaml
 ```
 
-## Example target project
-A concrete target with a real `train.py` is included in:
+## Example target projects
+Concrete targets with real `train.py` are included in:
 
-- `examples/minimal-trainable-target/train.py`
+- `examples/minimal-trainable-target/train.py` (synthetic deterministic target)
+- `examples/deberta-prompt-injection/train.py` (real Hugging Face DeBERTa fine-tuning target)
 
-Run a direct trial against it:
+Run direct trials:
 
 ```bash
-python scripts/run_example_target.py
+PYTHONPATH=src python3 examples/minimal-trainable-target/run.py
+PYTHONPATH=src python3 examples/deberta-prompt-injection/run.py
 ```
 
 ## Safety defaults
