@@ -1,0 +1,33 @@
+experiment:
+  name: autoresearch-like-v0
+  max_wall_seconds: 20
+  target_files:
+    - train.py
+  objective: val_bpb
+  contract:
+    frozen_file: examples/autoresearch-like/prepare.py
+    mutable_file: examples/autoresearch-like/train.py
+    program_file: examples/autoresearch-like/program.md
+    strict: true
+  comparability:
+    budget_mode: fixed_wallclock
+    expected_budget_s: 20
+    expected_hardware_fingerprint: null
+    strict: true
+sandbox:
+  allow_network: false
+  max_memory_gb: 4
+  max_cpu_cores: 2
+controller:
+  max_iterations: 10
+  history_window: 32
+telemetry:
+  trace_path: traces/autoresearch-like-events.jsonl
+  ledger_path: artifacts/autoresearch-like/results.tsv
+policy:
+  provider: "baseline"
+  temperature: 0.4
+eval:
+  early_stop:
+    enabled: false
+    check_every_seconds: 5

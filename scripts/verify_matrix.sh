@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 0) Guard against synthetic fixed-metric execution paths in runtime code
+if grep -RIn "echo 'val_bpb\|val_bpb=1\.22" src scripts examples --exclude-dir=__pycache__ --exclude=verify_matrix.sh; then
+  echo "found forbidden synthetic metric command patterns"
+  exit 1
+fi
+
 # 1) Contract rules
 pytest -q tests/test_contract.py
 
