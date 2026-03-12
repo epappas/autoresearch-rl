@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.sandbox.runner import run_trial
 
@@ -12,7 +14,7 @@ def main() -> None:
     )
 
     cmd = [
-        "python3",
+        sys.executable,
         "examples/deberta-prompt-injection/train.py",
         "--epochs",
         "1",
