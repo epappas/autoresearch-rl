@@ -41,10 +41,37 @@ def _run_git(cwd: str, *args: str, input_text: str | None = None) -> subprocess.
     )
 
 
-def _apply_patch_with_git(diff: str, workdir: str) -> tuple[bool, str]:
+def _ensure_git_repo(workdir: str) -> tuple[bool, str]:
     wd = Path(workdir)
     if not wd.exists() or not wd.is_dir():
         return False, f"workdir does not exist: {workdir}"
+
+    if (wd / ".git").exists():
+        return True, ""
+
+    init = _run_git(workdir, "init")
+    if init.returncode != 0:
+        return False, f"git init failed: {init.stderr.strip() or init.stdout.strip()}"
+
+    _run_git(workdir, "config", "user.name", "AutoResearch Scaffold")
+    _run_git(workdir, "config", "user.email", "scaffold@local")
+    _run_git(workdir, "add", "-A")
+    commit = _run_git(workdir, "commit", "-m", "scaffold baseline", "--allow-empty")
+    if commit.returncode != 0:
+        return False, f"initial git commit failed: {commit.stderr.strip() or commit.stdout.strip()}"
+
+    return True, ""
+
+
+def _apply_patch_with_git(diff: str, workdir: str, auto_init_git: bool = True) -> tuple[bool, str]:
+    wd = Path(workdir)
+    if not wd.exists() or not wd.is_dir():
+        return False, f"workdir does not exist: {workdir}"
+
+    if auto_init_git:
+        ok, reason = _ensure_git_repo(workdir)
+        if not ok:
+            return False, reason
 
     check = _run_git(workdir, "apply", "--check", "-", input_text=diff)
     if check.returncode != 0:
@@ -57,9 +84,34 @@ def _apply_patch_with_git(diff: str, workdir: str) -> tuple[bool, str]:
     return True, ""
 
 
-def _rollback_patch_with_git(workdir: str) -> None:
-    # Best-effort rollback to clean tracked files.
-    _run_git(workdir, "reset", "--hard", "HEAD")
+def _extract_touched_files_from_diff(diff: str) -> list[str]:
+    touched: list[str] = []
+    seen: set[str] = set()
+    for raw in diff.splitlines():
+        line = raw.strip()
+        if line.startswith("+++ b/") or line.startswith("--- a/"):
+            path = line[6:]
+            if path == "/dev/null" or not path:
+                continue
+            if path not in seen:
+                seen.add(path)
+                touched.append(path)
+    return touched
+
+
+def _rollback_patch_with_git(workdir: str, touched_files: list[str]) -> None:
+    # Best-effort rollback scoped ONLY to files touched by the candidate diff.
+    if not touched_files:
+        return
+
+    # Unstage touched files if needed.
+    _run_git(workdir, "reset", "HEAD", "--", *touched_files)
+
+    # Restore tracked paths to HEAD state.
+    _run_git(workdir, "checkout", "--", *touched_files)
+
+    # Remove untracked files among touched paths (e.g., files introduced by patch).
+    _run_git(workdir, "clean", "-f", "--", *touched_files)
 
 
 def _reader_thread(stream, sink: list[str]) -> None:
@@ -81,13 +133,15 @@ def run_trial(
     workdir: str | None = None,
     apply_patch: bool = False,
     rollback_patch: bool = True,
+    auto_init_git: bool = True,
     early_stop: EarlyStopConfig | None = None,
 ) -> TrialResult:
     """Validate candidate diff, optionally apply patch in workdir, then run bounded command.
 
     Notes:
-    - Patch application currently requires a git workdir and uses `git apply`.
-    - If `rollback_patch=True`, tracked files are reset with `git reset --hard HEAD` after run.
+    - Patch application uses `git apply`.
+    - If `auto_init_git=True` and no .git is present, runner initializes a local git repo.
+    - If `rollback_patch=True`, rollback is scoped to files touched by the diff only.
     """
     v = validate_diff(diff)
     if not v.ok:
@@ -99,6 +153,8 @@ def run_trial(
             stderr=v.reason,
         )
 
+    touched_files = _extract_touched_files_from_diff(diff)
+
     patch_applied = False
     if apply_patch:
         if not workdir:
@@ -109,7 +165,7 @@ def run_trial(
                 elapsed_s=0.0,
                 stderr="apply_patch=true requires workdir",
             )
-        ok, reason = _apply_patch_with_git(diff=diff, workdir=workdir)
+        ok, reason = _apply_patch_with_git(diff=diff, workdir=workdir, auto_init_git=auto_init_git)
         if not ok:
             return TrialResult(
                 status="rejected",
@@ -174,7 +230,7 @@ def run_trial(
         t_err.join(timeout=1)
 
         if patch_applied and rollback_patch and workdir:
-            _rollback_patch_with_git(workdir)
+            _rollback_patch_with_git(workdir, touched_files=touched_files)
 
     elapsed = time.monotonic() - start
     return TrialResult(
