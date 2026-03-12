@@ -41,10 +41,37 @@ def _run_git(cwd: str, *args: str, input_text: str | None = None) -> subprocess.
     )
 
 
-def _apply_patch_with_git(diff: str, workdir: str) -> tuple[bool, str]:
+def _ensure_git_repo(workdir: str) -> tuple[bool, str]:
     wd = Path(workdir)
     if not wd.exists() or not wd.is_dir():
         return False, f"workdir does not exist: {workdir}"
+
+    if (wd / ".git").exists():
+        return True, ""
+
+    init = _run_git(workdir, "init")
+    if init.returncode != 0:
+        return False, f"git init failed: {init.stderr.strip() or init.stdout.strip()}"
+
+    _run_git(workdir, "config", "user.name", "AutoResearch Scaffold")
+    _run_git(workdir, "config", "user.email", "scaffold@local")
+    _run_git(workdir, "add", "-A")
+    commit = _run_git(workdir, "commit", "-m", "scaffold baseline", "--allow-empty")
+    if commit.returncode != 0:
+        return False, f"initial git commit failed: {commit.stderr.strip() or commit.stdout.strip()}"
+
+    return True, ""
+
+
+def _apply_patch_with_git(diff: str, workdir: str, auto_init_git: bool = True) -> tuple[bool, str]:
+    wd = Path(workdir)
+    if not wd.exists() or not wd.is_dir():
+        return False, f"workdir does not exist: {workdir}"
+
+    if auto_init_git:
+        ok, reason = _ensure_git_repo(workdir)
+        if not ok:
+            return False, reason
 
     check = _run_git(workdir, "apply", "--check", "-", input_text=diff)
     if check.returncode != 0:
@@ -81,12 +108,14 @@ def run_trial(
     workdir: str | None = None,
     apply_patch: bool = False,
     rollback_patch: bool = True,
+    auto_init_git: bool = True,
     early_stop: EarlyStopConfig | None = None,
 ) -> TrialResult:
     """Validate candidate diff, optionally apply patch in workdir, then run bounded command.
 
     Notes:
-    - Patch application currently requires a git workdir and uses `git apply`.
+    - Patch application uses `git apply`.
+    - If `auto_init_git=True` and no .git is present, runner initializes a local git repo.
     - If `rollback_patch=True`, tracked files are reset with `git reset --hard HEAD` after run.
     """
     v = validate_diff(diff)
@@ -109,7 +138,7 @@ def run_trial(
                 elapsed_s=0.0,
                 stderr="apply_patch=true requires workdir",
             )
-        ok, reason = _apply_patch_with_git(diff=diff, workdir=workdir)
+        ok, reason = _apply_patch_with_git(diff=diff, workdir=workdir, auto_init_git=auto_init_git)
         if not ok:
             return TrialResult(
                 status="rejected",
