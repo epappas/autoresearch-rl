@@ -51,13 +51,6 @@ uv run python examples/minimal-trainable-target/run.py
 uv run python examples/deberta-prompt-injection/run.py
 ```
 
-Run DeBERTa benchmark sweep:
-
-```bash
-uv run python scripts/benchmark_deberta_example.py
-```
-
-Config: `examples/deberta-prompt-injection/deberta-example.yaml`
 
 ## Comparability enforcement
 The scaffold supports strict fair-comparison mode for benchmark runs:
