@@ -39,7 +39,13 @@ uv run python scripts/benchmark_deberta_example.py
 ```
 
 Config file:
-- `configs/deberta-example.yaml`
+- `examples/deberta-prompt-injection/deberta-example.yaml`
+
+This config now includes comparability fields:
+- `experiment.comparability.budget_mode`
+- `experiment.comparability.expected_budget_s`
+- `experiment.comparability.expected_hardware_fingerprint`
+- `experiment.comparability.strict`
 
 ## Output metrics
 The script prints:

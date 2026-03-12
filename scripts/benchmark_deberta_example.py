@@ -54,7 +54,7 @@ def _run_one(config: dict, lr: float, wd: float, bs: int, epochs: int) -> dict:
     }
 
 
-def main(config_path: str = "configs/deberta-example.yaml") -> None:
+def main(config_path: str = "examples/deberta-prompt-injection/deberta-example.yaml") -> None:
     cfg = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
 
     sweep = cfg["benchmark"]["sweep"]

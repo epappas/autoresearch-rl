@@ -1,0 +1,21 @@
+experiment:
+  name: autoresearch-style-contract-demo
+  max_wall_seconds: 30
+  objective: val_bpb
+  contract:
+    frozen_file: examples/autoresearch-style-contract/prepare.py
+    mutable_file: examples/autoresearch-style-contract/train.py
+    program_file: examples/autoresearch-style-contract/program.md
+    strict: true
+  comparability:
+    budget_mode: fixed_wallclock
+    expected_budget_s: 30
+    expected_hardware_fingerprint: null
+    strict: false
+
+telemetry:
+  trace_path: traces/contract-demo-events.jsonl
+  ledger_path: artifacts/contract-demo/results.tsv
+
+controller:
+  max_iterations: 2

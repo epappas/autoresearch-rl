@@ -12,6 +12,11 @@ HEADER = [
     "episode_id",
     "iter",
     "score",
+    "budget_mode",
+    "budget_s",
+    "hardware_fingerprint",
+    "comparable",
+    "non_comparable_reason",
 ]
 
 
@@ -36,6 +41,11 @@ def append_result_row(
     episode_id: str,
     iter_idx: int,
     score: float,
+    budget_mode: str,
+    budget_s: int,
+    hardware_fingerprint: str,
+    comparable: bool,
+    non_comparable_reason: str,
 ) -> None:
     p = ensure_results_tsv(path)
     with p.open("a", encoding="utf-8", newline="") as f:
@@ -50,5 +60,10 @@ def append_result_row(
                 episode_id,
                 str(iter_idx),
                 f"{score:.6f}",
+                budget_mode,
+                str(budget_s),
+                hardware_fingerprint,
+                "1" if comparable else "0",
+                non_comparable_reason,
             ]
         )
