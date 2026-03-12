@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import queue
-import threading
-from dataclasses import dataclass
-from pathlib import Path
 import subprocess
 import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
 
 from autoresearch_rl.controller.contract import ContractConfig, validate_contract_files_exist, validate_diff_against_contract
 from autoresearch_rl.eval.judge import judge_next_state
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.eval.scoring import TrialSignals, score_from_signals
-from autoresearch_rl.policy.baselines import RandomPolicy
+from autoresearch_rl.policy.baselines import GreedyLLMPolicy
 from autoresearch_rl.sandbox.runner import EarlyStopConfig, TrialResult, run_trial
 from autoresearch_rl.telemetry.comparability import ComparabilityPolicy, check_comparability, hardware_fingerprint
 from autoresearch_rl.telemetry.events import emit
@@ -27,13 +26,7 @@ class LoopResult:
 
 def _current_commit_or_local(cwd: str | None = None) -> str:
     try:
-        cp = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        cp = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=cwd, capture_output=True, text=True, check=False)
         if cp.returncode == 0:
             return (cp.stdout or "").strip() or "local"
     except Exception:
@@ -59,23 +52,11 @@ def _ensure_git_workdir(workdir: str) -> None:
 
 def _apply_diff_persist(workdir: str, diff: str) -> tuple[bool, str]:
     _ensure_git_workdir(workdir)
-    cp = subprocess.run(
-        ["git", "-C", workdir, "apply", "--check", "-"],
-        input=diff,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    cp = subprocess.run(["git", "-C", workdir, "apply", "--check", "-"], input=diff, text=True, capture_output=True, check=False)
     if cp.returncode != 0:
         return False, cp.stderr.strip() or cp.stdout.strip()
 
-    cp2 = subprocess.run(
-        ["git", "-C", workdir, "apply", "-"],
-        input=diff,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    cp2 = subprocess.run(["git", "-C", workdir, "apply", "-"], input=diff, text=True, capture_output=True, check=False)
     if cp2.returncode != 0:
         return False, cp2.stderr.strip() or cp2.stdout.strip()
     return True, ""
@@ -140,15 +121,14 @@ def run_loop(
     trial_timeout_s: int = 30,
     trial_command: list[str] | None = None,
     comparability_policy: ComparabilityPolicy | None = None,
+    continuous: bool = False,
+    max_wall_time_s: int | None = None,
+    no_improve_limit: int | None = None,
+    failure_rate_limit: float | None = None,
+    failure_window: int = 10,
 ) -> LoopResult:
-    """Async scaffold loop with proposal -> trial -> judge pipeline.
-
-    Notes:
-      - Uses deterministic baseline policy by default.
-      - Uses next-state judging: score turn t after observing trial output from turn t+1.
-    """
     episode_id = new_run_id()
-    proposal_policy = RandomPolicy(seed=7)
+    proposal_policy = GreedyLLMPolicy()
     ensure_results_tsv(ledger_path)
     commit = _current_commit_or_local()
 
@@ -168,85 +148,61 @@ def run_loop(
 
     comp_policy = comparability_policy or ComparabilityPolicy(expected_budget_s=trial_timeout_s)
     hw_fp = hardware_fingerprint()
-    comparable, non_comparable_reason = check_comparability(
-        policy=comp_policy,
-        run_budget_s=trial_timeout_s,
-        run_hardware_fingerprint=hw_fp,
-    )
+    comparable, non_comparable_reason = check_comparability(comp_policy, trial_timeout_s, hw_fp)
     if comp_policy.strict and not comparable:
         raise ValueError(f"Non-comparable run blocked: {non_comparable_reason}")
 
-    proposal_q: queue.Queue[dict] = queue.Queue(maxsize=max(4, max_iterations * 2))
-    result_q: queue.Queue[dict] = queue.Queue(maxsize=max(4, max_iterations * 2))
-
-    stop_token = object()
-
-    def runner_worker() -> None:
-        while True:
-            item = proposal_q.get()
-            if item is stop_token:
-                proposal_q.task_done()
-                break
-
-            i = int(item["iter"])
-            diff = item["diff"]
-
-            ok_contract, contract_reason = validate_diff_against_contract(diff, runtime_contract)
-            if runtime_contract.strict and not ok_contract:
-                trial = TrialResult(
-                    status="rejected",
-                    timeout_s=trial_timeout_s,
-                    diff_len=len(diff),
-                    elapsed_s=0.0,
-                    stderr=contract_reason,
-                )
-            else:
-                trial = run_trial(
-                    diff=diff,
-                    timeout_s=trial_timeout_s,
-                    command=effective_trial_command,
-                    workdir=workdir,
-                    apply_patch=True,
-                    rollback_patch=True,
-                    early_stop=early_stop or EarlyStopConfig(enabled=False),
-                )
-            result_q.put({"iter": i, "diff": diff, "trial": trial})
-            proposal_q.task_done()
-
-    runner_thread = threading.Thread(target=runner_worker, daemon=True)
-    runner_thread.start()
-
-    # Stage 1: generate proposals quickly
-    state = {"best_score": None, "mutable_file": mutable_file, "workdir": workdir}
-    for i in range(max_iterations):
-        diff = proposal_policy.propose_diff(state)
-        proposal_q.put({"iter": i, "diff": diff})
-        emit(trace_path, {"type": "proposal_created", "episode_id": episode_id, "iter": i, "diff_len": len(diff)})
-
-    # Stage 2: collect results and apply next-state judging
+    start_ts = time.monotonic()
     best = float("inf")
     incumbent_val_bpb = float("inf")
+    no_improve_streak = 0
+    iter_count = 0
+    recent_statuses: list[str] = []
+    history: list[dict] = []
+
     previous: dict | None = None
 
-    for _ in range(max_iterations):
-        item = result_q.get()
-        i = item["iter"]
-        trial: TrialResult = item["trial"]
+    while True:
+        if not continuous and iter_count >= max_iterations:
+            break
+        if continuous and max_wall_time_s is not None and (time.monotonic() - start_ts) >= max_wall_time_s:
+            break
+
+        state = {
+            "best_score": best if best < float("inf") else None,
+            "incumbent_val_bpb": incumbent_val_bpb if incumbent_val_bpb < float("inf") else None,
+            "no_improve_streak": no_improve_streak,
+            "history": history[-32:],
+            "mutable_file": mutable_file,
+            "workdir": workdir,
+        }
+
+        diff = proposal_policy.propose_diff(state)
+        emit(trace_path, {"type": "proposal_created", "episode_id": episode_id, "iter": iter_count, "diff_len": len(diff)})
+
+        ok_contract, contract_reason = validate_diff_against_contract(diff, runtime_contract)
+        if runtime_contract.strict and not ok_contract:
+            trial = TrialResult(status="rejected", timeout_s=trial_timeout_s, diff_len=len(diff), elapsed_s=0.0, stderr=contract_reason)
+        else:
+            trial = run_trial(
+                diff=diff,
+                timeout_s=trial_timeout_s,
+                command=effective_trial_command,
+                workdir=workdir,
+                apply_patch=True,
+                rollback_patch=True,
+                early_stop=early_stop or EarlyStopConfig(enabled=False),
+            )
 
         parsed = parse_metrics(trial.stdout)
-        current = {
-            "iter": i,
-            "trial": trial,
-            "parsed": parsed,
-            "diff": item["diff"],
-        }
+        current = {"iter": iter_count, "trial": trial, "parsed": parsed, "diff": diff}
 
         emit(
             trace_path,
             {
                 "type": "trial_completed",
                 "episode_id": episode_id,
-                "iter": i,
+                "iter": iter_count,
                 "status": trial.status,
                 "elapsed_s": round(trial.elapsed_s, 3),
                 "training_seconds": round(trial.elapsed_s, 3),
@@ -267,7 +223,6 @@ def run_loop(
                 next_stderr=trial.stderr,
                 vote_count=3,
             )
-
             signals = TrialSignals(
                 status=previous["trial"].status,
                 val_bpb=previous["parsed"].val_bpb,
@@ -277,7 +232,6 @@ def run_loop(
             )
             score = score_from_signals(signals)
             best = min(best, score)
-            state["best_score"] = best
 
             event = {
                 "type": "trial_scored",
@@ -297,6 +251,7 @@ def run_loop(
                     else "neutral"
                 ),
             }
+
             decision = "discard"
             prev_val = previous["parsed"].val_bpb
             if previous["trial"].status == "ok" and prev_val is not None and prev_val < incumbent_val_bpb:
@@ -304,9 +259,12 @@ def run_loop(
                 if applied:
                     incumbent_val_bpb = float(prev_val)
                     decision = "keep"
+                    no_improve_streak = 0
                 else:
-                    decision = "discard"
                     event["keep_error"] = err
+                    no_improve_streak += 1
+            else:
+                no_improve_streak += 1
 
             _record_scored_trial(
                 trace_path=trace_path,
@@ -325,10 +283,29 @@ def run_loop(
                 decision=decision,
             )
 
-        previous = current
-        result_q.task_done()
+            history.append(
+                {
+                    "iter": previous["iter"],
+                    "decision": decision,
+                    "status": previous["trial"].status,
+                    "val_bpb": previous["parsed"].val_bpb,
+                    "stderr": (previous["trial"].stderr or "")[:200],
+                }
+            )
+            recent_statuses.append(previous["trial"].status)
+            if len(recent_statuses) > max(1, failure_window):
+                recent_statuses.pop(0)
 
-    # flush final trial with neutral next-state score
+            if no_improve_limit is not None and no_improve_streak >= no_improve_limit:
+                break
+            if failure_rate_limit is not None and len(recent_statuses) >= max(1, failure_window):
+                fails = sum(1 for s in recent_statuses if s in {"failed", "timeout", "rejected"})
+                if (fails / len(recent_statuses)) >= failure_rate_limit:
+                    break
+
+        previous = current
+        iter_count += 1
+
     if previous is not None:
         signals = TrialSignals(
             status=previous["trial"].status,
@@ -339,7 +316,6 @@ def run_loop(
         )
         score = score_from_signals(signals)
         best = min(best, score)
-        state["best_score"] = best
 
         event = {
             "type": "trial_scored",
@@ -351,12 +327,12 @@ def run_loop(
             "hint": "",
             "sample_type": "neutral",
         }
+
         decision = "discard"
         prev_val = previous["parsed"].val_bpb
         if previous["trial"].status == "ok" and prev_val is not None and prev_val < incumbent_val_bpb:
             applied, err = _apply_diff_persist(workdir=workdir, diff=previous["diff"])
             if applied:
-                incumbent_val_bpb = float(prev_val)
                 decision = "keep"
             else:
                 event["keep_error"] = err
@@ -378,8 +354,4 @@ def run_loop(
             decision=decision,
         )
 
-    proposal_q.put(stop_token)
-    proposal_q.join()
-    runner_thread.join(timeout=2)
-
-    return LoopResult(best_score=best, iterations=max_iterations)
+    return LoopResult(best_score=best, iterations=iter_count)

@@ -28,10 +28,22 @@ def _target_path(state: Mapping[str, object]) -> Path:
     workdir = str(state.get("workdir", "."))
     mutable = str(state.get("mutable_file", "train.py"))
     p = Path(mutable)
-    # if mutable path is absolute or already rooted in workdir, normalize
     if p.is_absolute():
         return p
     return Path(workdir) / p.name
+
+
+def _recent_statuses(state: Mapping[str, object]) -> list[str]:
+    h = state.get("history", [])
+    if not isinstance(h, list):
+        return []
+    out: list[str] = []
+    for item in h[-8:]:
+        if isinstance(item, dict):
+            s = item.get("status")
+            if isinstance(s, str):
+                out.append(s)
+    return out
 
 
 @dataclass
@@ -61,11 +73,6 @@ class RandomPolicy:
 
 @dataclass
 class GreedyLLMPolicy:
-    """Deterministic heuristic baseline policy.
-
-    This is intentionally simple and deterministic so benchmark runs are repeatable.
-    """
-
     improve_threshold: float = 1.3
 
     def propose(self, state: Mapping[str, object]) -> Proposal:
@@ -78,8 +85,20 @@ class GreedyLLMPolicy:
         except (TypeError, ValueError):
             best_f = float("inf")
 
-        if best_f > self.improve_threshold:
-            # prioritize stability by adding qk flag marker
+        no_improve = int(state.get("no_improve_streak", 0) or 0)
+        recent = _recent_statuses(state)
+        recent_failures = sum(1 for s in recent if s in {"failed", "timeout", "rejected"})
+
+        if no_improve >= 3 or recent_failures >= 2:
+            # back off: try lower LR for stability
+            if "LEARNING_RATE =" in text:
+                new_text = text.replace("LEARNING_RATE = 0.0026", "LEARNING_RATE = 0.0020")
+                if new_text == text:
+                    new_text = text + "\nLEARNING_RATE = 0.0020\n"
+            else:
+                new_text = text + "\nLEARNING_RATE = 0.0020\n"
+            rationale = "backoff_after_failures"
+        elif best_f > self.improve_threshold:
             if "use_qk_norm = True" not in text:
                 new_text = text + "\nuse_qk_norm = True\n"
             else:

@@ -23,7 +23,9 @@ def test_greedy_policy_bootstrap_and_threshold(tmp_path: Path):
     d0 = p.propose_diff({**s, "best_score": None})
     d1 = p.propose_diff({**s, "best_score": 1.5})
     d2 = p.propose_diff({**s, "best_score": 1.2})
+    d3 = p.propose_diff({**s, "best_score": 1.2, "no_improve_streak": 3, "history": [{"status": "failed"}, {"status": "timeout"}]})
 
     assert "use_qk_norm" in d0
     assert "use_qk_norm" in d1
     assert "GRAD_CLIP" in d2
+    assert "LEARNING_RATE = 0.0020" in d3
