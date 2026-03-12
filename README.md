@@ -69,6 +69,8 @@ Config: `configs/deberta-example.yaml`
 - event-driven async pipeline: proposal → trial → judge/score
 - next-state judging with majority vote hooks
 - composite scoring (`val_bpb` + status penalties + evaluative score + hint bonus)
+- optional git-backed patch apply + rollback in trial runner
+- optional early-stop threshold checks in trial runner
 - richer telemetry (`event_id`, `episode_id`, `sample_type`) and replayable manifests
 
 ## Research notes
