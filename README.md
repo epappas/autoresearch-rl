@@ -86,6 +86,7 @@ The scaffold supports strict fair-comparison mode for benchmark runs:
 - Canonical results ledger: `results.tsv` (auto-initialized by loop)
 - Fixed-budget comparability policy: `experiment.comparability` in config
 - Strict contract mode blocks out-of-scope mutations (frozen/program/non-mutable files)
+- Verification matrix: `docs/VERIFICATION_MATRIX.md`
 
 ## Research notes
 - `docs/research/SDFT-Softmax-Divergence-Fine-Tuning.md`
