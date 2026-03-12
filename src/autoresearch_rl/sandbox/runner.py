@@ -162,7 +162,17 @@ def run_trial(
             )
         patch_applied = True
 
-    cmd = command or ["bash", "-lc", "echo 'val_bpb=1.234'"]
+    if command is None:
+        return TrialResult(
+            status="rejected",
+            timeout_s=timeout_s,
+            diff_len=len(diff),
+            elapsed_s=0.0,
+            stderr="command_required",
+            patch_applied=patch_applied,
+        )
+
+    cmd = command
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
