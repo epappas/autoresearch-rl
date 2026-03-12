@@ -21,6 +21,11 @@ sandbox:
 controller:
   max_iterations: 10
   history_window: 32
+  continuous: true
+  max_wall_time_s: 180
+  no_improve_limit: 5
+  failure_rate_limit: 0.8
+  failure_window: 5
 telemetry:
   trace_path: traces/autoresearch-like-events.jsonl
   ledger_path: artifacts/autoresearch-like/results.tsv

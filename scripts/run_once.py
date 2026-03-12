@@ -25,8 +25,10 @@ def main(config: str = "configs/example.yaml", iterations: int | None = None) ->
         strict=bool(comparability_cfg.get("strict", True)),
     )
 
+    controller_cfg = cfg.get("controller", {})
+
     result = run_loop(
-        max_iterations=min(iters, 3),
+        max_iterations=iters,
         trace_path=trace_path,
         ledger_path=ledger_path,
         mutable_file=contract.get("mutable_file", "train.py"),
@@ -35,6 +37,11 @@ def main(config: str = "configs/example.yaml", iterations: int | None = None) ->
         contract_strict=bool(contract.get("strict", True)),
         trial_timeout_s=max_wall_s,
         comparability_policy=comparability_policy,
+        continuous=bool(controller_cfg.get("continuous", False)),
+        max_wall_time_s=controller_cfg.get("max_wall_time_s"),
+        no_improve_limit=controller_cfg.get("no_improve_limit"),
+        failure_rate_limit=controller_cfg.get("failure_rate_limit"),
+        failure_window=int(controller_cfg.get("failure_window", 10)),
     )
     print({"ok": True, "iterations": result.iterations, "best_score": result.best_score})
 
