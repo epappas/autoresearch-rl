@@ -6,28 +6,36 @@ A realistic target project for the scaffold using a Hugging Face DeBERTa classif
 - Task: binary prompt-injection detection
 - Dataset: small local JSONL (for reproducible smoke tests)
 
-## Install deps
+## Install deps (uv)
 
 ```bash
+uv sync --extra dev
+uv pip install -r examples/deberta-prompt-injection/requirements.txt
+```
+
+## Install deps (pip fallback)
+
+```bash
+pip install -e .[dev]
 pip install -r examples/deberta-prompt-injection/requirements.txt
 ```
 
 ## Run training directly
 
 ```bash
-python3 examples/deberta-prompt-injection/train.py
+uv run python examples/deberta-prompt-injection/train.py
 ```
 
 ## Run through scaffold trial runner
 
 ```bash
-PYTHONPATH=src python3 examples/deberta-prompt-injection/run.py
+uv run python examples/deberta-prompt-injection/run.py
 ```
 
 ## Run a hyperparameter sweep benchmark
 
 ```bash
-PYTHONPATH=src python3 scripts/benchmark_deberta_example.py
+uv run python scripts/benchmark_deberta_example.py
 ```
 
 Config file:

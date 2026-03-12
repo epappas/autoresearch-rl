@@ -20,7 +20,16 @@ Minimal production-oriented scaffold for autonomous training-script research loo
 - `scripts/` – CLI entry helpers
 - `tests/` – unit/integration tests
 
-## Quickstart
+## Quickstart (uv-first)
+```bash
+# install deps + dev extras from pyproject.toml
+uv sync --extra dev
+
+cp configs/example.yaml configs/local.yaml
+uv run python scripts/run_once.py --config configs/local.yaml
+```
+
+## Quickstart (pip fallback)
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -38,14 +47,14 @@ Concrete targets with real `train.py` are included in:
 Run direct trials:
 
 ```bash
-PYTHONPATH=src python3 examples/minimal-trainable-target/run.py
-PYTHONPATH=src python3 examples/deberta-prompt-injection/run.py
+uv run python examples/minimal-trainable-target/run.py
+uv run python examples/deberta-prompt-injection/run.py
 ```
 
 Run DeBERTa benchmark sweep:
 
 ```bash
-PYTHONPATH=src python3 scripts/benchmark_deberta_example.py
+uv run python scripts/benchmark_deberta_example.py
 ```
 
 Config: `configs/deberta-example.yaml`
