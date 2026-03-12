@@ -8,6 +8,11 @@ experiment:
     frozen_file: prepare.py
     mutable_file: train.py
     program_file: programs/default.md
+  comparability:
+    budget_mode: fixed_wallclock
+    expected_budget_s: 300
+    expected_hardware_fingerprint: null
+    strict: true
 sandbox:
   allow_network: false
   max_memory_gb: 32

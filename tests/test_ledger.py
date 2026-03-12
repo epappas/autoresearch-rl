@@ -23,6 +23,11 @@ def test_append_result_row(tmp_path: Path):
         episode_id="ep1",
         iter_idx=0,
         score=1.11111,
+        budget_mode="fixed_wallclock",
+        budget_s=300,
+        hardware_fingerprint="abcdef0123456789",
+        comparable=True,
+        non_comparable_reason="",
     )
     lines = p.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
