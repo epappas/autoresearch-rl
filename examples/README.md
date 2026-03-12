@@ -12,9 +12,12 @@ This folder contains concrete target projects that the scaffold can optimize.
   - Real Hugging Face fine-tuning target based on DeBERTa.
   - Includes local JSONL data, a train script, and a scaffold-compatible runner.
 
+- `autoresearch-like/`
+  - Simple in-repo autoresearch-style example (`prepare.py`, `train.py`, `program.md`).
+  - Single entrypoint: `run.py`.
+
 - `autoresearch-style-contract/`
-  - Contract-first example modeled after the community-adopted autoresearch file pattern.
-  - Demonstrates strict enforcement of frozen vs mutable vs program files.
+  - Contract validation focused example.
 
 ## Why this exists
 
