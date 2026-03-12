@@ -42,6 +42,14 @@ PYTHONPATH=src python3 examples/minimal-trainable-target/run.py
 PYTHONPATH=src python3 examples/deberta-prompt-injection/run.py
 ```
 
+Run DeBERTa benchmark sweep:
+
+```bash
+PYTHONPATH=src python3 scripts/benchmark_deberta_example.py
+```
+
+Config: `configs/deberta-example.yaml`
+
 ## Safety defaults
 - mutable scope limited to target file list
 - no network in runner (expected to be enforced by runtime/container)

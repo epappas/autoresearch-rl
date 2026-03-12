@@ -24,6 +24,15 @@ python3 examples/deberta-prompt-injection/train.py
 PYTHONPATH=src python3 examples/deberta-prompt-injection/run.py
 ```
 
+## Run a hyperparameter sweep benchmark
+
+```bash
+PYTHONPATH=src python3 scripts/benchmark_deberta_example.py
+```
+
+Config file:
+- `configs/deberta-example.yaml`
+
 ## Output metrics
 The script prints:
 - `loss=...`
