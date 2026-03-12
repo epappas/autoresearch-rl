@@ -3,7 +3,6 @@ from __future__ import annotations
 import queue
 import threading
 from dataclasses import dataclass
-from pathlib import Path
 import subprocess
 
 from autoresearch_rl.controller.contract import ContractConfig, validate_contract_files_exist, validate_diff_against_contract
@@ -38,6 +37,51 @@ def _current_commit_or_local(cwd: str | None = None) -> str:
     except Exception:
         pass
     return "local"
+
+
+def _record_scored_trial(
+    *,
+    trace_path: str,
+    artifacts_dir: str,
+    ledger_path: str,
+    event: dict,
+    trial: TrialResult,
+    diff: str,
+    parsed_val_bpb: float | None,
+    commit: str,
+    comparable: bool,
+    non_comparable_reason: str,
+    budget_mode: str,
+    budget_s: int,
+    hardware_fp: str,
+) -> None:
+    emit(trace_path, event)
+    write_manifest(
+        artifacts_dir,
+        {
+            **event,
+            "run_id": f"{event['episode_id']}-{event['iter']:04d}",
+            "stdout": trial.stdout,
+            "stderr": trial.stderr,
+            "diff": diff,
+        },
+    )
+    append_result_row(
+        path=ledger_path,
+        commit=commit,
+        val_bpb=float(parsed_val_bpb if parsed_val_bpb is not None else 0.0),
+        memory_gb=0.0,
+        status=(str(event["sample_type"]) if comparable else "non_comparable"),
+        description="controller_loop_trial",
+        episode_id=str(event["episode_id"]),
+        iter_idx=int(event["iter"]),
+        score=float(event["score"]),
+        budget_mode=budget_mode,
+        budget_s=budget_s,
+        hardware_fingerprint=hardware_fp,
+        comparable=comparable,
+        non_comparable_reason=non_comparable_reason,
+    )
 
 
 def run_loop(
@@ -200,32 +244,20 @@ def run_loop(
                     else "neutral"
                 ),
             }
-            emit(trace_path, event)
-            write_manifest(
-                artifacts_dir,
-                {
-                    **event,
-                    "run_id": f"{episode_id}-{previous['iter']:04d}",
-                    "stdout": previous["trial"].stdout,
-                    "stderr": previous["trial"].stderr,
-                    "diff": previous["diff"],
-                },
-            )
-            append_result_row(
-                path=ledger_path,
+            _record_scored_trial(
+                trace_path=trace_path,
+                artifacts_dir=artifacts_dir,
+                ledger_path=ledger_path,
+                event=event,
+                trial=previous["trial"],
+                diff=previous["diff"],
+                parsed_val_bpb=previous["parsed"].val_bpb,
                 commit=commit,
-                val_bpb=float(previous["parsed"].val_bpb if previous["parsed"].val_bpb is not None else 0.0),
-                memory_gb=0.0,
-                status=(str(event["sample_type"]) if comparable else "non_comparable"),
-                description="controller_loop_trial",
-                episode_id=episode_id,
-                iter_idx=int(previous["iter"]),
-                score=float(score),
-                budget_mode=comp_policy.budget_mode,
-                budget_s=trial_timeout_s,
-                hardware_fingerprint=hw_fp,
                 comparable=comparable,
                 non_comparable_reason=non_comparable_reason,
+                budget_mode=comp_policy.budget_mode,
+                budget_s=trial_timeout_s,
+                hardware_fp=hw_fp,
             )
 
         previous = current
@@ -254,32 +286,20 @@ def run_loop(
             "hint": "",
             "sample_type": "neutral",
         }
-        emit(trace_path, event)
-        write_manifest(
-            artifacts_dir,
-            {
-                **event,
-                "run_id": f"{episode_id}-{previous['iter']:04d}",
-                "stdout": previous["trial"].stdout,
-                "stderr": previous["trial"].stderr,
-                "diff": previous["diff"],
-            },
-        )
-        append_result_row(
-            path=ledger_path,
+        _record_scored_trial(
+            trace_path=trace_path,
+            artifacts_dir=artifacts_dir,
+            ledger_path=ledger_path,
+            event=event,
+            trial=previous["trial"],
+            diff=previous["diff"],
+            parsed_val_bpb=previous["parsed"].val_bpb,
             commit=commit,
-            val_bpb=float(previous["parsed"].val_bpb if previous["parsed"].val_bpb is not None else 0.0),
-            memory_gb=0.0,
-            status=(str(event["sample_type"]) if comparable else "non_comparable"),
-            description="controller_loop_trial",
-            episode_id=episode_id,
-            iter_idx=int(previous["iter"]),
-            score=float(score),
-            budget_mode=comp_policy.budget_mode,
-            budget_s=trial_timeout_s,
-            hardware_fingerprint=hw_fp,
             comparable=comparable,
             non_comparable_reason=non_comparable_reason,
+            budget_mode=comp_policy.budget_mode,
+            budget_s=trial_timeout_s,
+            hardware_fp=hw_fp,
         )
 
     proposal_q.put(stop_token)
