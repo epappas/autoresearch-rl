@@ -32,6 +32,7 @@ def main(config: str = "configs/example.yaml", iterations: int | None = None) ->
         mutable_file=contract.get("mutable_file", "train.py"),
         frozen_file=contract.get("frozen_file", "prepare.py"),
         program_path=contract.get("program_file", "programs/default.md"),
+        contract_strict=bool(contract.get("strict", True)),
         trial_timeout_s=max_wall_s,
         comparability_policy=comparability_policy,
     )

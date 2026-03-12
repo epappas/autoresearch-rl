@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 
+from autoresearch_rl.controller.contract import ContractConfig, validate_contract_files_exist, validate_diff_against_contract
 from autoresearch_rl.eval.judge import judge_next_state
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.eval.scoring import TrialSignals, score_from_signals
@@ -48,6 +49,7 @@ def run_loop(
     mutable_file: str = "train.py",
     frozen_file: str = "prepare.py",
     program_path: str = "programs/default.md",
+    contract_strict: bool = True,
     trial_timeout_s: int = 30,
     comparability_policy: ComparabilityPolicy | None = None,
 ) -> LoopResult:
@@ -62,8 +64,15 @@ def run_loop(
     ensure_results_tsv(ledger_path)
     commit = _current_commit_or_local()
 
-    # contract files are intentionally explicit for reproducibility.
-    _ = (mutable_file, frozen_file, program_path)
+    contract = ContractConfig(
+        frozen_file=frozen_file,
+        mutable_file=mutable_file,
+        program_file=program_path,
+        strict=contract_strict,
+    )
+    files_ok, files_reason = validate_contract_files_exist(contract)
+    if contract.strict and not files_ok:
+        raise ValueError(f"Contract validation failed: {files_reason}")
 
     comp_policy = comparability_policy or ComparabilityPolicy(expected_budget_s=trial_timeout_s)
     hw_fp = hardware_fingerprint()
@@ -89,11 +98,22 @@ def run_loop(
 
             i = int(item["iter"])
             diff = item["diff"]
-            trial = run_trial(
-                diff=diff,
-                timeout_s=trial_timeout_s,
-                early_stop=early_stop or EarlyStopConfig(enabled=False),
-            )
+
+            ok_contract, contract_reason = validate_diff_against_contract(diff, contract)
+            if contract.strict and not ok_contract:
+                trial = TrialResult(
+                    status="rejected",
+                    timeout_s=trial_timeout_s,
+                    diff_len=len(diff),
+                    elapsed_s=0.0,
+                    stderr=contract_reason,
+                )
+            else:
+                trial = run_trial(
+                    diff=diff,
+                    timeout_s=trial_timeout_s,
+                    early_stop=early_stop or EarlyStopConfig(enabled=False),
+                )
             result_q.put({"iter": i, "diff": diff, "trial": trial})
             proposal_q.task_done()
 

@@ -8,6 +8,7 @@ experiment:
     frozen_file: prepare.py
     mutable_file: train.py
     program_file: programs/default.md
+    strict: true
   comparability:
     budget_mode: fixed_wallclock
     expected_budget_s: 300
