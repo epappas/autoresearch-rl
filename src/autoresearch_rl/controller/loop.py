@@ -3,6 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 import subprocess
 import sys
 
@@ -40,6 +41,46 @@ def _current_commit_or_local(cwd: str | None = None) -> str:
     return "local"
 
 
+def _infer_workdir(mutable_file: str) -> str:
+    p = Path(mutable_file)
+    parent = str(p.parent)
+    return "." if parent in {"", "."} else parent
+
+
+def _ensure_git_workdir(workdir: str) -> None:
+    p = Path(workdir)
+    if not (p / ".git").exists():
+        subprocess.run(["git", "-C", workdir, "init"], check=False, capture_output=True, text=True)
+        subprocess.run(["git", "-C", workdir, "config", "user.name", "AutoResearch"], check=False, capture_output=True, text=True)
+        subprocess.run(["git", "-C", workdir, "config", "user.email", "autoresearch@local"], check=False, capture_output=True, text=True)
+        subprocess.run(["git", "-C", workdir, "add", "-A"], check=False, capture_output=True, text=True)
+        subprocess.run(["git", "-C", workdir, "commit", "-m", "baseline", "--allow-empty"], check=False, capture_output=True, text=True)
+
+
+def _apply_diff_persist(workdir: str, diff: str) -> tuple[bool, str]:
+    _ensure_git_workdir(workdir)
+    cp = subprocess.run(
+        ["git", "-C", workdir, "apply", "--check", "-"],
+        input=diff,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if cp.returncode != 0:
+        return False, cp.stderr.strip() or cp.stdout.strip()
+
+    cp2 = subprocess.run(
+        ["git", "-C", workdir, "apply", "-"],
+        input=diff,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if cp2.returncode != 0:
+        return False, cp2.stderr.strip() or cp2.stdout.strip()
+    return True, ""
+
+
 def _record_scored_trial(
     *,
     trace_path: str,
@@ -55,6 +96,7 @@ def _record_scored_trial(
     budget_mode: str,
     budget_s: int,
     hardware_fp: str,
+    decision: str,
 ) -> None:
     emit(trace_path, event)
     write_manifest(
@@ -72,7 +114,7 @@ def _record_scored_trial(
         commit=commit,
         val_bpb=float(parsed_val_bpb if parsed_val_bpb is not None else 0.0),
         memory_gb=0.0,
-        status=(str(event["sample_type"]) if comparable else "non_comparable"),
+        status=(decision if comparable else "non_comparable"),
         description="controller_loop_trial",
         episode_id=str(event["episode_id"]),
         iter_idx=int(event["iter"]),
@@ -110,17 +152,19 @@ def run_loop(
     ensure_results_tsv(ledger_path)
     commit = _current_commit_or_local()
 
-    contract = ContractConfig(
-        frozen_file=frozen_file,
-        mutable_file=mutable_file,
-        program_file=program_path,
+    workdir = _infer_workdir(mutable_file)
+    runtime_contract = ContractConfig(
+        frozen_file=Path(frozen_file).name if workdir != "." else frozen_file,
+        mutable_file=Path(mutable_file).name if workdir != "." else mutable_file,
+        program_file=Path(program_path).name if workdir != "." else program_path,
         strict=contract_strict,
     )
-    files_ok, files_reason = validate_contract_files_exist(contract)
-    if contract.strict and not files_ok:
+    files_ok, files_reason = validate_contract_files_exist(runtime_contract, root=workdir)
+    if runtime_contract.strict and not files_ok:
         raise ValueError(f"Contract validation failed: {files_reason}")
 
-    effective_trial_command = trial_command or [sys.executable, mutable_file]
+    mutable_basename = Path(mutable_file).name
+    effective_trial_command = trial_command or [sys.executable, mutable_basename]
 
     comp_policy = comparability_policy or ComparabilityPolicy(expected_budget_s=trial_timeout_s)
     hw_fp = hardware_fingerprint()
@@ -147,8 +191,8 @@ def run_loop(
             i = int(item["iter"])
             diff = item["diff"]
 
-            ok_contract, contract_reason = validate_diff_against_contract(diff, contract)
-            if contract.strict and not ok_contract:
+            ok_contract, contract_reason = validate_diff_against_contract(diff, runtime_contract)
+            if runtime_contract.strict and not ok_contract:
                 trial = TrialResult(
                     status="rejected",
                     timeout_s=trial_timeout_s,
@@ -161,6 +205,9 @@ def run_loop(
                     diff=diff,
                     timeout_s=trial_timeout_s,
                     command=effective_trial_command,
+                    workdir=workdir,
+                    apply_patch=True,
+                    rollback_patch=True,
                     early_stop=early_stop or EarlyStopConfig(enabled=False),
                 )
             result_q.put({"iter": i, "diff": diff, "trial": trial})
@@ -170,7 +217,7 @@ def run_loop(
     runner_thread.start()
 
     # Stage 1: generate proposals quickly
-    state = {"best_score": None}
+    state = {"best_score": None, "mutable_file": mutable_file, "workdir": workdir}
     for i in range(max_iterations):
         diff = proposal_policy.propose_diff(state)
         proposal_q.put({"iter": i, "diff": diff})
@@ -178,6 +225,7 @@ def run_loop(
 
     # Stage 2: collect results and apply next-state judging
     best = float("inf")
+    incumbent_val_bpb = float("inf")
     previous: dict | None = None
 
     for _ in range(max_iterations):
@@ -249,6 +297,17 @@ def run_loop(
                     else "neutral"
                 ),
             }
+            decision = "discard"
+            prev_val = previous["parsed"].val_bpb
+            if previous["trial"].status == "ok" and prev_val is not None and prev_val < incumbent_val_bpb:
+                applied, err = _apply_diff_persist(workdir=workdir, diff=previous["diff"])
+                if applied:
+                    incumbent_val_bpb = float(prev_val)
+                    decision = "keep"
+                else:
+                    decision = "discard"
+                    event["keep_error"] = err
+
             _record_scored_trial(
                 trace_path=trace_path,
                 artifacts_dir=artifacts_dir,
@@ -263,6 +322,7 @@ def run_loop(
                 budget_mode=comp_policy.budget_mode,
                 budget_s=trial_timeout_s,
                 hardware_fp=hw_fp,
+                decision=decision,
             )
 
         previous = current
@@ -291,6 +351,16 @@ def run_loop(
             "hint": "",
             "sample_type": "neutral",
         }
+        decision = "discard"
+        prev_val = previous["parsed"].val_bpb
+        if previous["trial"].status == "ok" and prev_val is not None and prev_val < incumbent_val_bpb:
+            applied, err = _apply_diff_persist(workdir=workdir, diff=previous["diff"])
+            if applied:
+                incumbent_val_bpb = float(prev_val)
+                decision = "keep"
+            else:
+                event["keep_error"] = err
+
         _record_scored_trial(
             trace_path=trace_path,
             artifacts_dir=artifacts_dir,
@@ -305,6 +375,7 @@ def run_loop(
             budget_mode=comp_policy.budget_mode,
             budget_s=trial_timeout_s,
             hardware_fp=hw_fp,
+            decision=decision,
         )
 
     proposal_q.put(stop_token)

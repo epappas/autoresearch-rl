@@ -1,25 +1,25 @@
 experiment:
-  name: autoresearch-like-v0
-  max_wall_seconds: 20
+  name: scaffold-default
+  max_wall_seconds: 30
   target_files:
-    - examples/autoresearch-like/train.py
+    - train.py
   objective: val_bpb
   contract:
-    frozen_file: examples/autoresearch-like/prepare.py
-    mutable_file: examples/autoresearch-like/train.py
-    program_file: examples/autoresearch-like/program.md
-    strict: true
+    frozen_file: prepare.py
+    mutable_file: train.py
+    program_file: programs/default.md
+    strict: false
   comparability:
     budget_mode: fixed_wallclock
-    expected_budget_s: 20
+    expected_budget_s: 30
     expected_hardware_fingerprint: null
-    strict: true
+    strict: false
 sandbox:
   allow_network: false
   max_memory_gb: 32
   max_cpu_cores: 16
 controller:
-  max_iterations: 100
+  max_iterations: 3
   history_window: 32
 telemetry:
   trace_path: traces/events.jsonl
@@ -29,5 +29,5 @@ policy:
   temperature: 0.4
 eval:
   early_stop:
-    enabled: true
+    enabled: false
     check_every_seconds: 30
