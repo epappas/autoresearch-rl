@@ -4,6 +4,10 @@ experiment:
   target_files:
     - train.py
   objective: val_bpb
+  contract:
+    frozen_file: prepare.py
+    mutable_file: train.py
+    program_file: programs/default.md
 sandbox:
   allow_network: false
   max_memory_gb: 32
@@ -13,6 +17,7 @@ controller:
   history_window: 32
 telemetry:
   trace_path: traces/events.jsonl
+  ledger_path: results.tsv
 policy:
   provider: "stub"
   temperature: 0.4
