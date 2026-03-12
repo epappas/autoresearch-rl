@@ -16,6 +16,10 @@ This folder contains concrete target projects that the scaffold can optimize.
   - Contract-first example modeled after the community-adopted autoresearch file pattern.
   - Demonstrates strict enforcement of frozen vs mutable vs program files.
 
+- `autoresearch-adapter/`
+  - Uses the real `karpathy/autoresearch` repo as base (clone/update + bounded run).
+  - Records run outcome in scaffold ledger format.
+
 ## Why this exists
 
 The scaffold repository is primarily a **control-plane** (proposal → trial → scoring).
