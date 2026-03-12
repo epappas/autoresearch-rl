@@ -11,6 +11,12 @@ python examples/minimal-trainable-target/train.py \
   --grad-clip 0.8
 ```
 
+Run via scaffold trial runner:
+
+```bash
+PYTHONPATH=src python3 examples/minimal-trainable-target/run.py
+```
+
 Output format matches scaffold parser expectations:
 
 - `loss=...`
