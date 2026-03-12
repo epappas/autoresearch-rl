@@ -29,6 +29,17 @@ cp configs/example.yaml configs/local.yaml
 python scripts/run_once.py --config configs/local.yaml
 ```
 
+## Example target project
+A concrete target with a real `train.py` is included in:
+
+- `examples/minimal-trainable-target/train.py`
+
+Run a direct trial against it:
+
+```bash
+python scripts/run_example_target.py
+```
+
 ## Safety defaults
 - mutable scope limited to target file list
 - no network in runner (expected to be enforced by runtime/container)
