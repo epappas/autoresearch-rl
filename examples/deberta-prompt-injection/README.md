@@ -32,20 +32,6 @@ uv run python examples/deberta-prompt-injection/train.py
 uv run python examples/deberta-prompt-injection/run.py
 ```
 
-## Run a hyperparameter sweep benchmark
-
-```bash
-uv run python scripts/benchmark_deberta_example.py
-```
-
-Config file:
-- `examples/deberta-prompt-injection/deberta-example.yaml`
-
-This config now includes comparability fields:
-- `experiment.comparability.budget_mode`
-- `experiment.comparability.expected_budget_s`
-- `experiment.comparability.expected_hardware_fingerprint`
-- `experiment.comparability.strict`
 
 ## Output metrics
 The script prints:
