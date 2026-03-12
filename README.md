@@ -73,6 +73,11 @@ Config: `configs/deberta-example.yaml`
 - optional early-stop threshold checks in trial runner
 - richer telemetry (`event_id`, `episode_id`, `sample_type`) and replayable manifests
 
+## Contract and policy files
+- Three-file contract doc: `docs/THREE_FILE_CONTRACT.md`
+- Default agent policy: `programs/default.md`
+- Canonical results ledger: `results.tsv` (auto-initialized by loop)
+
 ## Research notes
 - `docs/research/SDFT-Softmax-Divergence-Fine-Tuning.md`
 - `docs/research/SDPO-Self-Distilled-Policy-Optimization.md`

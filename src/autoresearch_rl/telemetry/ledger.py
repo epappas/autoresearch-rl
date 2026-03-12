@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+
+HEADER = [
+    "commit",
+    "val_bpb",
+    "memory_gb",
+    "status",
+    "description",
+    "episode_id",
+    "iter",
+    "score",
+]
+
+
+def ensure_results_tsv(path: str = "results.tsv") -> Path:
+    p = Path(path)
+    if not p.exists():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f, delimiter="\t")
+            w.writerow(HEADER)
+    return p
+
+
+def append_result_row(
+    *,
+    path: str = "results.tsv",
+    commit: str,
+    val_bpb: float,
+    memory_gb: float,
+    status: str,
+    description: str,
+    episode_id: str,
+    iter_idx: int,
+    score: float,
+) -> None:
+    p = ensure_results_tsv(path)
+    with p.open("a", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, delimiter="\t")
+        w.writerow(
+            [
+                commit,
+                f"{val_bpb:.6f}",
+                f"{memory_gb:.1f}",
+                status,
+                description,
+                episode_id,
+                str(iter_idx),
+                f"{score:.6f}",
+            ]
+        )
