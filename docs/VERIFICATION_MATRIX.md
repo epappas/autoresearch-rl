@@ -2,6 +2,8 @@
 
 This matrix defines the core guarantees and how to verify them.
 
+CI enforces these checks via `scripts/verify_matrix.sh` in `.github/workflows/ci.yml`.
+
 | Capability | Verification command | Expected outcome |
 |---|---|---|
 | Contract rules (allow mutable / block frozen+out-of-scope) | `pytest -q tests/test_contract.py` | all pass |
