@@ -12,3 +12,5 @@ jobs:
           python-version: '3.11'
       - run: pip install -e .[dev]
       - run: pytest -q
+      - run: chmod +x scripts/verify_matrix.sh
+      - run: ./scripts/verify_matrix.sh
