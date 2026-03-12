@@ -12,6 +12,14 @@ This folder contains concrete target projects that the scaffold can optimize.
   - Real Hugging Face fine-tuning target based on DeBERTa.
   - Includes local JSONL data, a train script, and a scaffold-compatible runner.
 
+## New scaffold capabilities these examples support
+
+Examples can now use the latest control-plane features:
+- three-file contract (`frozen`, `mutable`, `program`)
+- canonical `results.tsv` ledger auto-append
+- fixed-budget comparability policy (budget + hardware fingerprint tags)
+- patch apply/rollback safety in runner
+
 ## Why this exists
 
 The scaffold repository is primarily a **control-plane** (proposal → trial → scoring).

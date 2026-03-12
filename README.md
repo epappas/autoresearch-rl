@@ -57,7 +57,7 @@ Run DeBERTa benchmark sweep:
 uv run python scripts/benchmark_deberta_example.py
 ```
 
-Config: `configs/deberta-example.yaml`
+Config: `examples/deberta-prompt-injection/deberta-example.yaml`
 
 ## Comparability enforcement
 The scaffold supports strict fair-comparison mode for benchmark runs:
