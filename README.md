@@ -1,87 +1,55 @@
-# AutoResearch-RL Scaffold
+# AutoResearch-RL
 
-Minimal production-oriented scaffold for autonomous training-script research loops.
+Continuous autoresearch RL runner for long-lived model training loops.
 
 ## Goals
-- Deterministic, auditable experiment loop
-- Safe code-edit sandboxing
-- Fixed-budget comparable evaluations
-- Trace-first observability
-- Next-state-aware scoring (evaluate turn _t_ using state from _t+1_)
-- Dual-signal optimization hooks (evaluative + directional)
+- Always-on continuous runs (with safety stop guards)
+- Modular targets (local command, Docker/remote via HTTP)
+- Keep/discard decisions with versioned artifacts
+- Trace + ledger output for auditability
 
-## Layout
-- `src/autoresearch_rl/controller` – run orchestration and state machine
-- `src/autoresearch_rl/sandbox` – patch validation + constrained execution
-- `src/autoresearch_rl/policy` – proposal interface (LLM/RL plug points)
-- `src/autoresearch_rl/eval` – scoring, early-stop forecasting hooks
-- `src/autoresearch_rl/telemetry` – trace/event emitters
-- `configs/` – runtime and benchmark configs
-- `scripts/` – CLI entry helpers
-- `tests/` – unit/integration tests
+## Layout (core)
+- `src/autoresearch_rl/cli.py` – CLI entrypoint
+- `src/autoresearch_rl/controller/continuous.py` – continuous loop
+- `src/autoresearch_rl/target/` – target adapters (command/http)
+- `src/autoresearch_rl/policy/` – parameter search policies
+- `src/autoresearch_rl/telemetry/` – trace + ledger
 
-## Quickstart (uv-first)
+## Install
 ```bash
-# install deps + dev extras from pyproject.toml
 uv sync --extra dev
-
-cp configs/example.yaml configs/local.yaml
-uv run python scripts/run_once.py --config configs/local.yaml
+pip install -e .
 ```
 
-## Quickstart (pip fallback)
+## Quickstart (continuous)
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .[dev]
 cp configs/example.yaml configs/local.yaml
-python scripts/run_once.py --config configs/local.yaml
+autoresearch-rl run --config configs/local.yaml
 ```
 
-## Example target projects
-Concrete targets with real `train.py` are included in:
+## Targets
+You can point the runner at any training entrypoint via `command` or `http` target adapters.
 
-- `examples/minimal-trainable-target/train.py` (synthetic deterministic target)
-- `examples/deberta-prompt-injection/train.py` (real Hugging Face DeBERTa fine-tuning target)
-
-Run direct trials:
-
-```bash
-uv run python examples/minimal-trainable-target/run.py
-uv run python examples/deberta-prompt-injection/run.py
+### Command target (local/Docker wrapper)
+```yaml
+target:
+  type: command
+  train_cmd: ["python3", "train.py"]
+  eval_cmd: ["python3", "eval.py"]
 ```
 
+### HTTP target (remote/vLLM/sglang)
+```yaml
+target:
+  type: http
+  url: "http://localhost:8080/train"
+  headers:
+    Authorization: "Bearer ..."
+```
 
-## Comparability enforcement
-The scaffold supports strict fair-comparison mode for benchmark runs:
-- `budget_mode: fixed_wallclock`
-- run budget must match configured `expected_budget_s`
-- optional hardware fingerprint lock (`expected_hardware_fingerprint`)
-- strict mode blocks non-comparable runs and records comparability metadata in `results.tsv`
-
-## Safety defaults
-- mutable scope limited to target file list
-- no network in runner (expected to be enforced by runtime/container)
-- hard wall-clock timeout per run
-- every run emits structured JSONL trace
-
-## v0.2 architecture extensions
-- event-driven async pipeline: proposal → trial → judge/score
-- next-state judging with majority vote hooks
-- composite scoring (`val_bpb` + status penalties + evaluative score + hint bonus)
-- optional git-backed patch apply + rollback in trial runner (auto-inits git if missing)
-- optional early-stop threshold checks in trial runner
-- richer telemetry (`event_id`, `episode_id`, `sample_type`) and replayable manifests
-
-## Contract and policy files
-- Three-file contract doc: `docs/THREE_FILE_CONTRACT.md`
-- Default agent policy: `programs/default.md`
-- Canonical results ledger: `results.tsv` (auto-initialized by loop)
-- Fixed-budget comparability policy: `experiment.comparability` in config
-- Strict contract mode blocks out-of-scope mutations (frozen/program/non-mutable files)
-- Verification matrix: `docs/VERIFICATION_MATRIX.md`
-
-## Research notes
-- `docs/research/SDFT-Softmax-Divergence-Fine-Tuning.md`
-- `docs/research/SDPO-Self-Distilled-Policy-Optimization.md`
-- `docs/research/AutoResearch-RL-Perpetual-Self-Evaluating-RL-Agents.md`
+## Output
+Each iteration emits:
+- `traces/events.jsonl`
+- `artifacts/results.tsv`
+- `artifacts/runs/` (stdout/stderr + manifest)
+- `artifacts/versions/` (only for `keep` decisions)
