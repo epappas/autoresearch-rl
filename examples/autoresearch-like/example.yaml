@@ -33,3 +33,9 @@ telemetry:
   ledger_path: artifacts/autoresearch-like/results.tsv
   artifacts_dir: artifacts/autoresearch-like/runs
   versions_dir: artifacts/autoresearch-like/versions
+
+comparability:
+  budget_mode: fixed_wallclock
+  expected_budget_s: 30
+  expected_hardware_fingerprint: null
+  strict: false

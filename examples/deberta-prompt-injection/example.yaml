@@ -33,3 +33,9 @@ telemetry:
   ledger_path: artifacts/deberta/results.tsv
   artifacts_dir: artifacts/deberta/runs
   versions_dir: artifacts/deberta/versions
+
+comparability:
+  budget_mode: fixed_wallclock
+  expected_budget_s: 7200
+  expected_hardware_fingerprint: null
+  strict: false

@@ -21,6 +21,10 @@ class CommandTarget(TargetAdapter):
     def _run(self, *, cmd: list[str], run_dir: str, params: dict[str, object]) -> RunOutcome:
         env = os.environ.copy()
         env["AR_RUN_DIR"] = run_dir
+        if "AR_SEED" in os.environ:
+            env["AR_SEED"] = os.environ["AR_SEED"]
+        if "PYTHONHASHSEED" in os.environ:
+            env["PYTHONHASHSEED"] = os.environ["PYTHONHASHSEED"]
         env["AR_PARAMS_JSON"] = json.dumps(params)
         for k, v in params.items():
             env[f"AR_PARAM_{str(k).upper()}"] = str(v)

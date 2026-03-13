@@ -63,3 +63,11 @@ Each iteration emits:
 ## Examples
 
 See `examples/README.md`.
+
+## CLI helpers
+
+```bash
+autoresearch-rl validate --config configs/example.yaml
+autoresearch-rl print-config --config configs/example.yaml
+autoresearch-rl --config configs/example.yaml --override controller.max_wall_time_s=10
+```

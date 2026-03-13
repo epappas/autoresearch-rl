@@ -5,7 +5,8 @@ from pathlib import Path
 
 HEADER = [
     "commit",
-    "val_bpb",
+    "metric_name",
+    "metric_value",
     "memory_gb",
     "status",
     "description",
@@ -34,7 +35,8 @@ def append_result_row(
     *,
     path: str = "results.tsv",
     commit: str,
-    val_bpb: float,
+    metric_name: str,
+    metric_value: float,
     memory_gb: float,
     status: str,
     description: str,
@@ -53,7 +55,8 @@ def append_result_row(
         w.writerow(
             [
                 commit,
-                f"{val_bpb:.6f}",
+                metric_name,
+                f"{metric_value:.6f}",
                 f"{memory_gb:.1f}",
                 status,
                 description,

@@ -93,7 +93,8 @@ def _record_scored_trial(
     append_result_row(
         path=ledger_path,
         commit=commit,
-        val_bpb=float(parsed_val_bpb if parsed_val_bpb is not None else 0.0),
+        metric_name="val_bpb",
+        metric_value=float(parsed_val_bpb if parsed_val_bpb is not None else 0.0),
         memory_gb=0.0,
         status=(decision if comparable else "non_comparable"),
         description="controller_loop_trial",
