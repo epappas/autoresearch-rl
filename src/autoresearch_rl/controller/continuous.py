@@ -98,13 +98,17 @@ def run_continuous(
         os.environ["AR_SEED"] = str(controller.seed)
 
     run_manifest_path = str(Path(telemetry.artifacts_dir) / "run-manifest.json")
-    write_run_manifest(run_manifest_path, config={
-        "objective": objective.model_dump(),
-        "controller": controller.model_dump(),
-        "telemetry": telemetry.model_dump(),
-        "policy": policy_cfg.model_dump(),
-        "comparability": comparability_cfg.model_dump(),
-    }, run_id=episode_id)
+    write_run_manifest(
+        run_manifest_path,
+        config={
+            "objective": objective.model_dump(),
+            "controller": controller.model_dump(),
+            "telemetry": telemetry.model_dump(),
+            "policy": policy_cfg.model_dump(),
+            "comparability": comparability_cfg.model_dump(),
+        },
+        run_id=episode_id,
+    )
 
     comp_policy = ComparabilityPolicy(
         budget_mode=comparability_cfg.budget_mode,
@@ -126,17 +130,21 @@ def run_continuous(
         run_dir = str(Path(telemetry.artifacts_dir) / f"run-{iter_idx:04d}")
         Path(run_dir).mkdir(parents=True, exist_ok=True)
 
-        emit(telemetry.trace_path, {"type": "proposal", "episode_id": episode_id, "iter": iter_idx, "params": proposal.params}, run_id=episode_id)
+        emit(
+            telemetry.trace_path,
+            {"type": "proposal", "episode_id": episode_id, "iter": iter_idx, "params": proposal.params},
+            run_id=episode_id,
+        )
+
         try:
             train_out = target.run(run_dir=run_dir, params=proposal.params)
             if train_out.status != "ok":
-            if train_out.status != 'ok':
                 outcome = train_out
             else:
                 outcome = target.eval(run_dir=run_dir, params=proposal.params)
         except Exception as exc:
             outcome = RunOutcome(status="failed", metrics={}, stdout="", stderr=str(exc), elapsed_s=0.0, run_dir=run_dir)
-            outcome = RunOutcome(status='failed', metrics={}, stdout='', stderr=str(exc), elapsed_s=0.0, run_dir=run_dir)
+
         value = _objective_value(outcome.metrics, objective)
         status = outcome.status
         if value is None:
@@ -189,7 +197,6 @@ def run_continuous(
         append_result_row(
             path=telemetry.ledger_path,
             commit=_current_commit(),
-            commit=_current_commit(),
             metric_name=objective.metric,
             metric_value=float(value if value is not None else 0.0),
             memory_gb=0.0,
@@ -197,7 +204,6 @@ def run_continuous(
             description="continuous",
             episode_id=str(episode_id),
             iter_idx=int(iter_idx),
-            score=float(best_score if best_score < float("inf") else 0.0),
             score=float(best_score if best_score < float("inf") else 0.0),
             budget_mode=comp_policy.budget_mode,
             budget_s=run_budget_s,
@@ -231,7 +237,4 @@ def run_continuous(
             if (fails / len(recent_statuses)) >= controller.failure_rate_limit:
                 break
 
-        iter_idx += 1
-
-    return LoopResult(best_score=best_score, best_value=best_value, iterations=iter_idx)
     return LoopResult(best_score=best_score, best_value=best_value, iterations=iterations_done)
