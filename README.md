@@ -59,3 +59,7 @@ Each iteration emits:
 - `artifacts/results.tsv`
 - `artifacts/runs/` (stdout/stderr + manifest)
 - `artifacts/versions/` (only for `keep` decisions)
+
+## Examples
+
+See `examples/README.md`.
