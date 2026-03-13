@@ -1,33 +1,33 @@
-experiment:
-  name: scaffold-default
-  max_wall_seconds: 30
-  target_files:
-    - train.py
-  objective: val_bpb
-  contract:
-    frozen_file: prepare.py
-    mutable_file: train.py
-    program_file: programs/default.md
-    strict: false
-  comparability:
-    budget_mode: fixed_wallclock
-    expected_budget_s: 30
-    expected_hardware_fingerprint: null
-    strict: false
-sandbox:
-  allow_network: false
-  max_memory_gb: 32
-  max_cpu_cores: 16
+name: autoresearch-run
+
+objective:
+  metric: val_bpb
+  direction: min
+
+target:
+  type: command
+  workdir: .
+  timeout_s: 3600
+  train_cmd:
+    - python3
+    - examples/minimal-trainable-target/train.py
+  eval_cmd:
+    - python3
+    - examples/minimal-trainable-target/train.py
+
+policy:
+  type: grid
+  params:
+    lr: [0.001, 0.002, 0.003]
+
 controller:
-  max_iterations: 3
-  history_window: 32
+  max_wall_time_s: 3600
+  no_improve_limit: 10
+  failure_rate_limit: 0.8
+  failure_window: 5
+
 telemetry:
   trace_path: traces/events.jsonl
-  ledger_path: results.tsv
-policy:
-  provider: "baseline"
-  temperature: 0.4
-eval:
-  early_stop:
-    enabled: false
-    check_every_seconds: 30
+  ledger_path: artifacts/results.tsv
+  artifacts_dir: artifacts/runs
+  versions_dir: artifacts/versions
