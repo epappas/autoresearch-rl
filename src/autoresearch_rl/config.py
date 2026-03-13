@@ -34,6 +34,7 @@ class ComparabilityConfig(BaseModel):
 
 
 class ControllerConfig(BaseModel):
+    seed: int | None = None
     max_wall_time_s: int | None = None
     no_improve_limit: int | None = None
     failure_rate_limit: float | None = None

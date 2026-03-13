@@ -34,6 +34,17 @@ def _score(value: float, objective: ObjectiveConfig) -> float:
     return value if objective.direction == "min" else -value
 
 
+def _current_commit() -> str:
+    try:
+        import subprocess
+        cp = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False)
+        if cp.returncode == 0:
+            return (cp.stdout or "").strip() or "local"
+    except Exception:
+        pass
+    return "local"
+
+
 def _policy_from_config(policy_cfg) -> ParamPolicy:
     if policy_cfg.type == "grid":
         return GridPolicy(policy_cfg.params)
@@ -76,6 +87,7 @@ def run_continuous(
     no_improve_streak = 0
     recent_statuses: list[str] = []
     iter_idx = 0
+    iterations_done = 0
     start_ts = time.monotonic()
 
     policy = _policy_from_config(policy_cfg)
@@ -118,11 +130,13 @@ def run_continuous(
         try:
             train_out = target.run(run_dir=run_dir, params=proposal.params)
             if train_out.status != "ok":
+            if train_out.status != 'ok':
                 outcome = train_out
             else:
                 outcome = target.eval(run_dir=run_dir, params=proposal.params)
         except Exception as exc:
             outcome = RunOutcome(status="failed", metrics={}, stdout="", stderr=str(exc), elapsed_s=0.0, run_dir=run_dir)
+            outcome = RunOutcome(status='failed', metrics={}, stdout='', stderr=str(exc), elapsed_s=0.0, run_dir=run_dir)
         value = _objective_value(outcome.metrics, objective)
         status = outcome.status
         if value is None:
@@ -174,7 +188,8 @@ def run_continuous(
 
         append_result_row(
             path=telemetry.ledger_path,
-            commit="continuous",
+            commit=_current_commit(),
+            commit=_current_commit(),
             metric_name=objective.metric,
             metric_value=float(value if value is not None else 0.0),
             memory_gb=0.0,
@@ -182,7 +197,8 @@ def run_continuous(
             description="continuous",
             episode_id=str(episode_id),
             iter_idx=int(iter_idx),
-            score=float(best_score),
+            score=float(best_score if best_score < float("inf") else 0.0),
+            score=float(best_score if best_score < float("inf") else 0.0),
             budget_mode=comp_policy.budget_mode,
             budget_s=run_budget_s,
             hardware_fingerprint=hw_fp,
@@ -204,6 +220,9 @@ def run_continuous(
         if len(recent_statuses) > max(1, controller.failure_window):
             recent_statuses.pop(0)
 
+        iterations_done += 1
+        iter_idx += 1
+
         if controller.no_improve_limit is not None and no_improve_streak >= controller.no_improve_limit:
             break
 
@@ -215,3 +234,4 @@ def run_continuous(
         iter_idx += 1
 
     return LoopResult(best_score=best_score, best_value=best_value, iterations=iter_idx)
+    return LoopResult(best_score=best_score, best_value=best_value, iterations=iterations_done)
