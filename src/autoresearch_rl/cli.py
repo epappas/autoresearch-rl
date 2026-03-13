@@ -13,9 +13,7 @@ from autoresearch_rl.target.registry import build_target
 app = typer.Typer(add_completion=False)
 
 
-@app.command()
-def run(config: str = typer.Option(..., "--config")) -> None:
-    """Continuous autoresearch RL run (always on)."""
+def _run(config: str) -> None:
     cfg_path = Path(config)
     cfg_data = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
     cfg = RunConfig.model_validate(cfg_data)
@@ -30,6 +28,19 @@ def run(config: str = typer.Option(..., "--config")) -> None:
     )
 
     typer.echo(json.dumps({"iterations": result.iterations, "best_score": result.best_score}, indent=2))
+
+
+@app.command()
+def run(config: str = typer.Option(..., "--config")) -> None:
+    """Continuous autoresearch RL run (always on)."""
+    _run(config)
+
+
+@app.callback(invoke_without_command=True)
+def main(config: str = typer.Option(None, "--config")) -> None:
+    """Default command: run continuously when --config is provided."""
+    if config:
+        _run(config)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,13 @@
 # Minimal Trainable Target
 
-A tiny deterministic target project for `autoresearch-rl-scaffold`.
+A tiny deterministic target project for the **continuous CLI**.
+
+## Run (continuous CLI)
+```bash
+uv run autoresearch-rl --config configs/example.yaml
+```
 
 ## Run manually
-
 ```bash
 python examples/minimal-trainable-target/train.py \
   --learning-rate 2.8e-3 \
@@ -11,20 +15,24 @@ python examples/minimal-trainable-target/train.py \
   --grad-clip 0.8
 ```
 
-Run via scaffold trial runner:
+## How it works
+- The CLI injects params via env vars:
+  - `AR_PARAMS_JSON`
+  - `AR_PARAM_<NAME>`
+- The script prints metrics:
+  - `loss=...`
+  - `val_bpb=...`
 
-```bash
-PYTHONPATH=src python3 examples/minimal-trainable-target/run.py
-```
-
-Output format matches scaffold parser expectations:
-
-- `loss=...`
-- `val_bpb=...`
+## What to expect
+- The run completes quickly (seconds).
+- Artifacts are written to:
+  - `traces/events.jsonl`
+  - `artifacts/results.tsv`
+  - `artifacts/runs/`
+  - `artifacts/versions/`
 
 ## Purpose
-
-Use this project when you want:
-- a real `train.py` file the scaffold can conceptually mutate,
-- deterministic metric output for reproducible loop testing,
-- no external dependencies or GPUs.
+Use this project for:
+- deterministic metric output
+- quick end-to-end validation
+- no external dependencies or GPUs

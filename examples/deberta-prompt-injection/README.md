@@ -1,47 +1,26 @@
-# DeBERTa Prompt-Injection Example
+# deberta-prompt-injection (continuous CLI)
 
-A realistic target project for the scaffold using a Hugging Face DeBERTa classifier.
+This example is wired for the continuous CLI. You must install requirements
+and point the target commands to your environment.
 
-- Base model: `protectai/deberta-v3-base-prompt-injection-v2`
-- Task: binary prompt-injection detection
-- Dataset: small local JSONL (for reproducible smoke tests)
-
-## Install deps (uv)
-
+## Run
 ```bash
-uv sync --extra dev
-uv pip install -r examples/deberta-prompt-injection/requirements.txt
-```
-
-## Install deps (pip fallback)
-
-```bash
-pip install -e .[dev]
 pip install -r examples/deberta-prompt-injection/requirements.txt
+uv run autoresearch-rl --config examples/deberta-prompt-injection/example.yaml
 ```
 
-## Run training directly
+## How it works
+- Params injected via env vars:
+  - `AR_PARAMS_JSON`
+  - `AR_PARAM_<NAME>`
+- Script prints metrics including `val_bpb`.
 
-```bash
-uv run python examples/deberta-prompt-injection/train.py
-```
-
-## Run through scaffold trial runner
-
-```bash
-uv run python examples/deberta-prompt-injection/run.py
-```
-
-
-## Output metrics
-The script prints:
-- `loss=...`
-- `val_bpb=...` (defined as `1 - f1` for scaffold compatibility)
-- `f1=...`
-- `accuracy=...`
-
-and writes `artifacts/deberta-example/metrics.json`.
+## What to expect
+- This run is **slow** (HF fine-tuning).
+- Artifacts:
+  - `artifacts/deberta/results.tsv`
+  - `artifacts/deberta/runs/`
+  - `artifacts/deberta/versions/`
 
 ## Notes
-- This is a minimal demonstration target. For real use, swap in larger curated train/val sets.
-- You can point `--model-name` to another checkpoint if desired.
+Update `example.yaml` for your hardware / dataset paths.

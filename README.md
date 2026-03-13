@@ -24,6 +24,8 @@ pip install -e .
 ## Quickstart (continuous)
 ```bash
 cp configs/example.yaml configs/local.yaml
+autoresearch-rl --config configs/local.yaml
+# or
 autoresearch-rl run --config configs/local.yaml
 ```
 
@@ -37,6 +39,10 @@ target:
   train_cmd: ["python3", "train.py"]
   eval_cmd: ["python3", "eval.py"]
 ```
+
+**Parameter injection:** the command target passes params via environment variables:
+- `AR_PARAMS_JSON` (full dict)
+- `AR_PARAM_<NAME>` (uppercased keys)
 
 ### HTTP target (remote/vLLM/sglang)
 ```yaml
@@ -53,3 +59,7 @@ Each iteration emits:
 - `artifacts/results.tsv`
 - `artifacts/runs/` (stdout/stderr + manifest)
 - `artifacts/versions/` (only for `keep` decisions)
+
+## Examples
+
+See `examples/README.md`.

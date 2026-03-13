@@ -1,6 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+
+
+def _env_params() -> dict[str, object]:
+    if "AR_PARAMS_JSON" in os.environ:
+        try:
+            return json.loads(os.environ["AR_PARAMS_JSON"])
+        except json.JSONDecodeError:
+            return {}
+    params: dict[str, object] = {}
+    for k, v in os.environ.items():
+        if k.startswith("AR_PARAM_"):
+            params[k[len("AR_PARAM_"):].lower()] = v
+    return params
 
 
 def synthetic_metrics(learning_rate: float, use_qk_norm: bool, grad_clip: float) -> tuple[float, float]:
@@ -29,11 +44,16 @@ def main() -> None:
     p.add_argument("--use-qk-norm", action="store_true")
     p.add_argument("--grad-clip", type=float, default=0.8)
     args = p.parse_args()
+    env = _env_params()
+
+    learning_rate = float(env.get("learning_rate", args.learning_rate))
+    grad_clip = float(env.get("grad_clip", args.grad_clip))
+    use_qk_norm = args.use_qk_norm or str(env.get("use_qk_norm", "")).lower() in {"1", "true", "yes"}
 
     loss, val_bpb = synthetic_metrics(
-        learning_rate=args.learning_rate,
-        use_qk_norm=args.use_qk_norm,
-        grad_clip=args.grad_clip,
+        learning_rate=learning_rate,
+        use_qk_norm=use_qk_norm,
+        grad_clip=grad_clip,
     )
 
     print(f"loss={loss:.4f}")

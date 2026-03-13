@@ -40,6 +40,16 @@ class CommandTarget(TargetAdapter):
         stderr = cp.stderr or ""
         metrics = parse_metrics(stdout + "\n" + stderr)
         metrics_dict = {k: v for k, v in vars(metrics).items() if v is not None}
+        if not metrics_dict:
+            for line in (stdout + "\n" + stderr).splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip()
+                    try:
+                        metrics_dict[k] = float(v)
+                    except ValueError:
+                        continue
         status = "ok" if cp.returncode == 0 else "failed"
         return RunOutcome(status=status, metrics=metrics_dict, stdout=stdout, stderr=stderr, elapsed_s=elapsed, run_dir=run_dir)
 

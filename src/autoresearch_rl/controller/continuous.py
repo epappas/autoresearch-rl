@@ -88,6 +88,8 @@ def run_continuous(
 
         outcome = eval_out
         value = _objective_value(outcome.metrics, objective)
+        if value is None and "val_bpb" in outcome.metrics:
+            value = float(outcome.metrics["val_bpb"])
         status = outcome.status if value is not None else "failed"
 
         decision = "discard"

@@ -1,38 +1,35 @@
-experiment:
-  name: autoresearch-like-v0
-  max_wall_seconds: 20
-  target_files:
+name: autoresearch-like
+
+objective:
+  metric: val_bpb
+  direction: min
+
+target:
+  type: command
+  workdir: examples/autoresearch-like
+  timeout_s: 30
+  train_cmd:
+    - python3
     - train.py
-  objective: val_bpb
-  contract:
-    frozen_file: examples/autoresearch-like/prepare.py
-    mutable_file: examples/autoresearch-like/train.py
-    program_file: examples/autoresearch-like/program.md
-    strict: true
-  comparability:
-    budget_mode: fixed_wallclock
-    expected_budget_s: 20
-    expected_hardware_fingerprint: null
-    strict: true
-sandbox:
-  allow_network: false
-  max_memory_gb: 4
-  max_cpu_cores: 2
+  eval_cmd:
+    - python3
+    - train.py
+
+policy:
+  type: grid
+  params:
+    learning_rate: [0.0020, 0.0026, 0.0032]
+    grad_clip: [0.7, 0.85, 1.0]
+    use_qk_norm: [true, false]
+
 controller:
-  max_iterations: 10
-  history_window: 32
-  continuous: true
-  max_wall_time_s: 180
+  max_wall_time_s: 30
   no_improve_limit: 5
   failure_rate_limit: 0.8
   failure_window: 5
+
 telemetry:
-  trace_path: traces/autoresearch-like-events.jsonl
+  trace_path: traces/events.jsonl
   ledger_path: artifacts/autoresearch-like/results.tsv
-policy:
-  provider: "baseline"
-  temperature: 0.4
-eval:
-  early_stop:
-    enabled: false
-    check_every_seconds: 5
+  artifacts_dir: artifacts/autoresearch-like/runs
+  versions_dir: artifacts/autoresearch-like/versions

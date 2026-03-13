@@ -1,23 +1,19 @@
 # Examples
 
-This folder contains concrete target projects that the scaffold can optimize.
+This folder contains ready-to-run examples for the **continuous CLI**.
 
-## Included
+## Minimal trainable target
+```bash
+uv run autoresearch-rl --config configs/example.yaml
+```
 
-- `minimal-trainable-target/`
-  - Tiny synthetic training project with a real `train.py`.
-  - Emits `loss=...` and `val_bpb=...` so the scaffold metric parser works out-of-the-box.
+## Autoresearch-like
+```bash
+uv run autoresearch-rl --config examples/autoresearch-like/example.yaml
+```
 
-- `deberta-prompt-injection/`
-  - Real Hugging Face fine-tuning target based on DeBERTa.
-  - Includes local JSONL data, a train script, and a scaffold-compatible runner.
-
-- `autoresearch-like/`
-  - Simple in-repo autoresearch-style example (`prepare.py`, `train.py`, `program.md`).
-  - Single entrypoint: `run.py`.
-
-
-## Why this exists
-
-The scaffold repository is primarily a **control-plane** (proposal → trial → scoring).
-These examples provide a **data-plane target** so you can run realistic loops against actual files.
+## DeBERTa prompt injection
+```bash
+pip install -r examples/deberta-prompt-injection/requirements.txt
+uv run autoresearch-rl --config examples/deberta-prompt-injection/example.yaml
+```
