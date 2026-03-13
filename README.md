@@ -38,6 +38,10 @@ target:
   eval_cmd: ["python3", "eval.py"]
 ```
 
+**Parameter injection:** the command target passes params via environment variables:
+- `AR_PARAMS_JSON` (full dict)
+- `AR_PARAM_<NAME>` (uppercased keys)
+
 ### HTTP target (remote/vLLM/sglang)
 ```yaml
 target:
