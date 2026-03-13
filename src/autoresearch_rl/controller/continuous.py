@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import json
+import os
+import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from autoresearch_rl.config import ControllerConfig, ObjectiveConfig, TelemetryConfig
+from autoresearch_rl.config import ComparabilityConfig, ControllerConfig, ObjectiveConfig, TelemetryConfig
 from autoresearch_rl.policy.search import GridPolicy, ParamPolicy, RandomPolicy, StaticPolicy
 from autoresearch_rl.target.interface import RunOutcome, TargetAdapter
+from autoresearch_rl.telemetry.comparability import ComparabilityPolicy, check_comparability, hardware_fingerprint
 from autoresearch_rl.telemetry.events import emit
 from autoresearch_rl.telemetry.ledger import append_result_row, ensure_results_tsv
 from autoresearch_rl.telemetry.manifest import new_run_id, write_manifest
+from autoresearch_rl.telemetry.run import write_run_manifest
 
 
 @dataclass
 class LoopResult:
     best_score: float
+    best_value: float | None
     iterations: int
 
 
@@ -33,7 +38,7 @@ def _policy_from_config(policy_cfg) -> ParamPolicy:
     if policy_cfg.type == "grid":
         return GridPolicy(policy_cfg.params)
     if policy_cfg.type == "random":
-        return RandomPolicy(policy_cfg.params)
+        return RandomPolicy(policy_cfg.params, seed=policy_cfg.seed)
     return StaticPolicy()
 
 
@@ -58,6 +63,7 @@ def run_continuous(
     controller: ControllerConfig,
     telemetry: TelemetryConfig,
     policy_cfg,
+    comparability_cfg: ComparabilityConfig,
 ) -> LoopResult:
     ensure_results_tsv(telemetry.ledger_path)
     Path(telemetry.artifacts_dir).mkdir(parents=True, exist_ok=True)
@@ -66,13 +72,39 @@ def run_continuous(
     episode_id = new_run_id()
     history: list[dict] = []
     best_score = float("inf")
-    best_value = None
+    best_value: float | None = None
     no_improve_streak = 0
     recent_statuses: list[str] = []
     iter_idx = 0
     start_ts = time.monotonic()
 
     policy = _policy_from_config(policy_cfg)
+
+    if controller.seed is not None:
+        random.seed(controller.seed)
+        os.environ["PYTHONHASHSEED"] = str(controller.seed)
+        os.environ["AR_SEED"] = str(controller.seed)
+
+    run_manifest_path = str(Path(telemetry.artifacts_dir) / "run-manifest.json")
+    write_run_manifest(run_manifest_path, config={
+        "objective": objective.model_dump(),
+        "controller": controller.model_dump(),
+        "telemetry": telemetry.model_dump(),
+        "policy": policy_cfg.model_dump(),
+        "comparability": comparability_cfg.model_dump(),
+    }, run_id=episode_id)
+
+    comp_policy = ComparabilityPolicy(
+        budget_mode=comparability_cfg.budget_mode,
+        expected_budget_s=comparability_cfg.expected_budget_s,
+        expected_hardware_fingerprint=comparability_cfg.expected_hardware_fingerprint,
+        strict=comparability_cfg.strict,
+    )
+    hw_fp = hardware_fingerprint()
+    run_budget_s = controller.max_wall_time_s or comparability_cfg.expected_budget_s
+    comparable, non_comparable_reason = check_comparability(comp_policy, run_budget_s, hw_fp)
+    if comp_policy.strict and not comparable:
+        raise ValueError(f"Non-comparable run blocked: {non_comparable_reason}")
 
     while True:
         if controller.max_wall_time_s is not None and (time.monotonic() - start_ts) >= controller.max_wall_time_s:
@@ -82,15 +114,19 @@ def run_continuous(
         run_dir = str(Path(telemetry.artifacts_dir) / f"run-{iter_idx:04d}")
         Path(run_dir).mkdir(parents=True, exist_ok=True)
 
-        emit(telemetry.trace_path, {"type": "proposal", "episode_id": episode_id, "iter": iter_idx, "params": proposal.params})
-        train_out = target.run(run_dir=run_dir, params=proposal.params)
-        eval_out = target.eval(run_dir=run_dir, params=proposal.params)
-
-        outcome = eval_out
+        emit(telemetry.trace_path, {"type": "proposal", "episode_id": episode_id, "iter": iter_idx, "params": proposal.params}, run_id=episode_id)
+        try:
+            train_out = target.run(run_dir=run_dir, params=proposal.params)
+            if train_out.status != "ok":
+                outcome = train_out
+            else:
+                outcome = target.eval(run_dir=run_dir, params=proposal.params)
+        except Exception as exc:
+            outcome = RunOutcome(status="failed", metrics={}, stdout="", stderr=str(exc), elapsed_s=0.0, run_dir=run_dir)
         value = _objective_value(outcome.metrics, objective)
-        if value is None and "val_bpb" in outcome.metrics:
-            value = float(outcome.metrics["val_bpb"])
-        status = outcome.status if value is not None else "failed"
+        status = outcome.status
+        if value is None:
+            status = "failed"
 
         decision = "discard"
         if value is not None:
@@ -118,6 +154,7 @@ def run_continuous(
                 "params": proposal.params,
                 "elapsed_s": outcome.elapsed_s,
             },
+            run_id=episode_id,
         )
 
         write_manifest(
@@ -138,18 +175,19 @@ def run_continuous(
         append_result_row(
             path=telemetry.ledger_path,
             commit="continuous",
-            val_bpb=float(value if value is not None else 0.0),
+            metric_name=objective.metric,
+            metric_value=float(value if value is not None else 0.0),
             memory_gb=0.0,
             status=decision,
             description="continuous",
             episode_id=str(episode_id),
             iter_idx=int(iter_idx),
             score=float(best_score),
-            budget_mode="continuous",
-            budget_s=controller.max_wall_time_s or 0,
-            hardware_fingerprint="",
-            comparable=True,
-            non_comparable_reason="",
+            budget_mode=comp_policy.budget_mode,
+            budget_s=run_budget_s,
+            hardware_fingerprint=hw_fp,
+            comparable=comparable,
+            non_comparable_reason=non_comparable_reason,
         )
 
         history.append(
@@ -176,4 +214,4 @@ def run_continuous(
 
         iter_idx += 1
 
-    return LoopResult(best_score=best_score, iterations=iter_idx)
+    return LoopResult(best_score=best_score, best_value=best_value, iterations=iter_idx)

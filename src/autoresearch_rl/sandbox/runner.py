@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from autoresearch_rl.eval.metrics import parse_metrics
+from autoresearch_rl.eval.metrics import parse_metric_series, parse_metrics
 from autoresearch_rl.sandbox.diff_utils import extract_touched_files_from_diff
 from autoresearch_rl.sandbox.validator import validate_diff
 
@@ -19,6 +19,11 @@ class EarlyStopConfig:
     # For minimization metrics (lower is better)
     val_bpb_threshold: float | None = None
     loss_threshold: float | None = None
+    # Forecasting (power-law fit)
+    forecast_enabled: bool = False
+    forecast_min_points: int = 3
+    forecast_t_max_s: float | None = None
+    forecast_metric: str = "val_bpb"
 
 
 @dataclass
@@ -100,6 +105,65 @@ def _rollback_patch_with_git(workdir: str, touched_files: list[str]) -> None:
     _run_git(workdir, "clean", "-f", "--", *touched_files)
 
 
+def _fit_power_law(points: list[tuple[float, float]]) -> tuple[float, float, float] | None:
+    # Fit y = a * t^b + c via log transform on (y-c) with simple grid for c
+    if len(points) < 3:
+        return None
+    pts = [(t, y) for t, y in points if t > 0]
+    if len(pts) < 3:
+        return None
+    ys = [y for _, y in pts]
+    c_candidates = [min(ys) * 0.5, min(ys) * 0.8, min(ys) * 0.9]
+    best: tuple[float, float, float, float] | None = None
+    for c in c_candidates:
+        try:
+            xs = [__import__('math').log(t) for t, _ in pts]
+            zs = [__import__('math').log(max(1e-8, y - c)) for _, y in pts]
+        except ValueError:
+            continue
+        n = len(xs)
+        mean_x = sum(xs) / n
+        mean_z = sum(zs) / n
+        num = sum((x - mean_x) * (z - mean_z) for x, z in zip(xs, zs))
+        den = sum((x - mean_x) ** 2 for x in xs)
+        if den == 0:
+            continue
+        b = num / den
+        a = __import__('math').exp(mean_z - b * mean_x)
+        resid = sum((a * (t ** b) + c - y) ** 2 for t, y in pts)
+        if best is None or resid < best[0]:
+            best = (resid, a, b, c)
+    if best is None:
+        return None
+    _, a, b, c = best
+    return a, b, c
+
+
+def _forecast_value(points: list[tuple[float, float]], t_max: float) -> float | None:
+    fit = _fit_power_law(points)
+    if not fit:
+        return None
+    a, b, c = fit
+    return a * (t_max ** b) + c
+
+
+
+
+def _create_worktree(base_dir: str) -> tuple[str | None, str]:
+    import tempfile
+    ok, reason = _ensure_git_repo(base_dir)
+    if not ok:
+        return None, reason
+    tmp = tempfile.mkdtemp(prefix="ar-worktree-")
+    cp = _run_git(base_dir, "worktree", "add", "-f", tmp, "HEAD")
+    if cp.returncode != 0:
+        return None, cp.stderr.strip() or cp.stdout.strip()
+    return tmp, ""
+
+def _remove_worktree(base_dir: str, wt: str) -> None:
+    _run_git(base_dir, "worktree", "remove", "-f", wt)
+
+
 def _reader_thread(stream, sink: list[str]) -> None:
     try:
         for line in iter(stream.readline, ""):
@@ -121,6 +185,7 @@ def run_trial(
     rollback_patch: bool = True,
     auto_init_git: bool = True,
     early_stop: EarlyStopConfig | None = None,
+    use_worktree: bool = False,
 ) -> TrialResult:
     """Validate candidate diff, optionally apply patch in workdir, then run bounded command.
 
@@ -142,6 +207,8 @@ def run_trial(
     touched_files = extract_touched_files_from_diff(diff)
 
     patch_applied = False
+    trial_workdir = workdir
+    worktree_dir = None
     if apply_patch:
         if not workdir:
             return TrialResult(
@@ -151,7 +218,12 @@ def run_trial(
                 elapsed_s=0.0,
                 stderr="apply_patch=true requires workdir",
             )
-        ok, reason = _apply_patch_with_git(diff=diff, workdir=workdir, auto_init_git=auto_init_git)
+        if use_worktree:
+            worktree_dir, reason = _create_worktree(workdir)
+            if not worktree_dir:
+                return TrialResult(status="rejected", timeout_s=timeout_s, diff_len=len(diff), elapsed_s=0.0, stderr=reason)
+            trial_workdir = worktree_dir
+        ok, reason = _apply_patch_with_git(diff=diff, workdir=trial_workdir, auto_init_git=auto_init_git)
         if not ok:
             return TrialResult(
                 status="rejected",
@@ -178,7 +250,7 @@ def run_trial(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        cwd=workdir or None,
+        cwd=trial_workdir or None,
     )
 
     out_lines: list[str] = []
@@ -211,7 +283,22 @@ def run_trial(
                 parsed = parse_metrics("".join(out_lines))
                 bad_bpb = es.val_bpb_threshold is not None and parsed.val_bpb is not None and parsed.val_bpb > es.val_bpb_threshold
                 bad_loss = es.loss_threshold is not None and parsed.loss is not None and parsed.loss > es.loss_threshold
-                if bad_bpb or bad_loss:
+
+                forecast_bad = False
+                if es.forecast_enabled:
+                    points = parse_metric_series("".join(out_lines))
+                    series = [(p.t, p.val_bpb if es.forecast_metric == "val_bpb" else p.loss) for p in points]
+                    series = [(t, v) for t, v in series if v is not None]
+                    if len(series) >= es.forecast_min_points:
+                        t_max = es.forecast_t_max_s or float(timeout_s)
+                        predicted = _forecast_value(series, t_max)
+                        if predicted is not None:
+                            if es.forecast_metric == "val_bpb" and es.val_bpb_threshold is not None:
+                                forecast_bad = predicted > es.val_bpb_threshold
+                            if es.forecast_metric == "loss" and es.loss_threshold is not None:
+                                forecast_bad = predicted > es.loss_threshold
+
+                if bad_bpb or bad_loss or forecast_bad:
                     proc.terminate()
                     time.sleep(0.5)
                     if proc.poll() is None:
@@ -225,8 +312,10 @@ def run_trial(
         t_out.join(timeout=1)
         t_err.join(timeout=1)
 
-        if patch_applied and rollback_patch and workdir:
-            _rollback_patch_with_git(workdir, touched_files=touched_files)
+        if patch_applied and rollback_patch and trial_workdir:
+            _rollback_patch_with_git(trial_workdir, touched_files=touched_files)
+        if worktree_dir and workdir:
+            _remove_worktree(workdir, worktree_dir)
 
     elapsed = time.monotonic() - start
     return TrialResult(

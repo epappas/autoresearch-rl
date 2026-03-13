@@ -8,7 +8,7 @@ def test_ensure_results_tsv_header(tmp_path: Path):
     ensure_results_tsv(str(p))
     txt = p.read_text(encoding="utf-8").splitlines()
     assert txt
-    assert txt[0].startswith("commit\tval_bpb\tmemory_gb\tstatus")
+    assert txt[0].startswith("commit\tmetric_name\tmetric_value\tmemory_gb\tstatus")
 
 
 def test_append_result_row(tmp_path: Path):
@@ -16,7 +16,8 @@ def test_append_result_row(tmp_path: Path):
     append_result_row(
         path=str(p),
         commit="abc1234",
-        val_bpb=1.23456,
+        metric_name="val_bpb",
+        metric_value=1.23456,
         memory_gb=12.34,
         status="keep",
         description="baseline",

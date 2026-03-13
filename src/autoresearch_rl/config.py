@@ -22,7 +22,15 @@ class TargetConfig(BaseModel):
 
 class PolicyConfig(BaseModel):
     type: Literal["grid", "random", "static"] = "static"
-    params: dict[str, list[float] | list[int] | list[str]] = Field(default_factory=dict)
+    params: dict[str, list[float] | list[int] | list[str] | list[bool]] = Field(default_factory=dict)
+    seed: int = 7
+
+
+class ComparabilityConfig(BaseModel):
+    budget_mode: Literal["fixed_wallclock"] = "fixed_wallclock"
+    expected_budget_s: int = 300
+    expected_hardware_fingerprint: str | None = None
+    strict: bool = True
 
 
 class ControllerConfig(BaseModel):
@@ -30,6 +38,7 @@ class ControllerConfig(BaseModel):
     no_improve_limit: int | None = None
     failure_rate_limit: float | None = None
     failure_window: int = 10
+    seed: int | None = None
 
 
 class TelemetryConfig(BaseModel):
@@ -45,4 +54,5 @@ class RunConfig(BaseModel):
     target: TargetConfig = Field(default_factory=TargetConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
     controller: ControllerConfig = Field(default_factory=ControllerConfig)
+    comparability: ComparabilityConfig = Field(default_factory=ComparabilityConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
