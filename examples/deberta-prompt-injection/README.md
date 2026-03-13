@@ -9,6 +9,18 @@ pip install -r examples/deberta-prompt-injection/requirements.txt
 uv run autoresearch-rl --config examples/deberta-prompt-injection/example.yaml
 ```
 
+## How it works
+- Params injected via env vars:
+  - `AR_PARAMS_JSON`
+  - `AR_PARAM_<NAME>`
+- Script prints metrics including `val_bpb`.
+
+## What to expect
+- This run is **slow** (HF fine-tuning).
+- Artifacts:
+  - `artifacts/deberta/results.tsv`
+  - `artifacts/deberta/runs/`
+  - `artifacts/deberta/versions/`
+
 ## Notes
-Params are injected via env vars (AR_PARAMS_JSON / AR_PARAM_*). Update
-`example.yaml` if your training script expects different flags or envs.
+Update `example.yaml` for your hardware / dataset paths.
