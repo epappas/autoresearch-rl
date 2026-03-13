@@ -18,11 +18,13 @@ target:
 policy:
   type: grid
   params:
-    lr: [0.001, 0.002, 0.003]
+    learning_rate: [0.0015, 0.0026, 0.0032]
+    grad_clip: [0.7, 0.85, 1.0]
+    use_qk_norm: [true, false]
 
 controller:
-  max_wall_time_s: 3600
-  no_improve_limit: 10
+  max_wall_time_s: 60
+  no_improve_limit: 6
   failure_rate_limit: 0.8
   failure_window: 5
 

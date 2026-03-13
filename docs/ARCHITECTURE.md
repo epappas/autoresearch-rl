@@ -1,44 +1,27 @@
-# Architecture (current scaffold)
+# AutoResearch-RL Architecture (continuous CLI)
 
-## Control-plane
-- Proposal policy (currently baseline policies)
-- Loop state (best score + telemetry-backed history)
-- Async coordinator with bounded queues
-- Strict three-file contract enforcement (frozen/mutable/program)
+## Goal
+Provide a continuous RL loop that can run against any training target (local command, Docker wrapper, or remote HTTP endpoint) with keep/discard decisions and versioned artifacts.
 
-## Data-plane
-- Proposal queue (action generation)
-- Sandboxed trial runner queue (execution)
-- Next-state judge (evaluative + directional)
-- Composite scorer (scalar + hint-aware)
+## Runtime path
+`autoresearch-rl run` → `controller/continuous.py` → `target/*` → `telemetry/*`
 
-## Observability
-- Structured event stream (JSONL)
-- Run artifacts with immutable IDs
-- Replayable manifest with `episode_id` + `run_id` + `sample_type`
-- Canonical results ledger (`results.tsv`) with comparability metadata
+## Core modules
+- `cli.py`: CLI entrypoint (always-continuous)
+- `controller/continuous.py`: loop orchestration + stop guards
+- `target/command.py`: local/Docker command targets
+- `target/http.py`: remote endpoint targets (vLLM/sglang)
+- `policy/search.py`: grid/random/static param proposals
+- `telemetry/{events,ledger,manifest}.py`: trace + artifacts
 
-## Reward/Signal model
-- **Evaluative signal** (`eval_score`): majority-voted {-1, 0, +1} from next-state heuristics
-- **Directional signal** (`hint`): concise improvement hint extracted from next-state context
-- **Combined scoring**: val metric + penalties + next-state score + hint bonus
+## Keep/discard + versioning
+Each iteration produces metrics. If better per objective, it is **kept** and a version record is written to `artifacts/versions/v####/version.json`.
 
-## Comparability policy
-- Default budget mode: `fixed_wallclock`
-- Runs are tagged with `budget_mode`, `budget_s`, and `hardware_fingerprint`
-- Strict mode blocks non-comparable runs (budget/hardware mismatches)
-- CI runs verification-matrix checks via `scripts/verify_matrix.sh`
+## Stop guards
+- `max_wall_time_s`
+- `no_improve_limit`
+- `failure_rate_limit` + `failure_window`
 
-## Safety posture
-- Diff validation before execution
-- Best-effort AST guard on added Python lines (not full-file semantic proof)
-- Optional git-backed patch apply + rollback in trial runner
-- Optional threshold-based early-stop in trial runner
-- Bounded subprocess timeout in trial runner
-
-## Next steps
-1. Replace heuristic judge with model-based multi-vote judge
-2. Add true asynchronous trainer sink (online updates)
-3. Strengthen validation to full-file AST reparse after patch apply
-4. Add policy versioning + gated promotion/rollback
-5. Integrate llmtrace spans/events
+## Contract/sandbox (legacy)
+The earlier contract/sandbox loop remains in the repo but is **not** used by the continuous CLI.
+If you want to remove or integrate it, do so explicitly.
