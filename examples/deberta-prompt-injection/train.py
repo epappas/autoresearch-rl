@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-dir", default="artifacts/deberta-example")
     p.add_argument("--max-length", type=int, default=256)
     p.add_argument("--learning-rate", type=float, default=2e-5)
+    p.add_argument("--grad-clip", type=float, default=1.0)
+    p.add_argument("--use-qk-norm", action="store_true")
     p.add_argument("--weight-decay", type=float, default=0.01)
     p.add_argument("--epochs", type=int, default=1)
     p.add_argument("--batch-size", type=int, default=4)
@@ -33,6 +36,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if "AR_PARAMS_JSON" in os.environ:
+        try:
+            params = json.loads(os.environ["AR_PARAMS_JSON"])
+            if "learning_rate" in params:
+                args.learning_rate = float(params["learning_rate"])
+            if "grad_clip" in params:
+                args.grad_clip = float(params["grad_clip"])
+            if "use_qk_norm" in params:
+                args.use_qk_norm = bool(params["use_qk_norm"])
+        except json.JSONDecodeError:
+            pass
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     ds = load_dataset(

@@ -1,0 +1,35 @@
+name: deberta-prompt-injection
+
+objective:
+  metric: val_bpb
+  direction: min
+
+target:
+  type: command
+  workdir: examples/deberta-prompt-injection
+  timeout_s: 7200
+  train_cmd:
+    - python3
+    - train.py
+  eval_cmd:
+    - python3
+    - train.py
+
+policy:
+  type: grid
+  params:
+    learning_rate: [0.00002, 0.00003]
+    grad_clip: [1.0]
+    use_qk_norm: [false]
+
+controller:
+  max_wall_time_s: 7200
+  no_improve_limit: 5
+  failure_rate_limit: 0.8
+  failure_window: 5
+
+telemetry:
+  trace_path: traces/events.jsonl
+  ledger_path: artifacts/deberta/results.tsv
+  artifacts_dir: artifacts/deberta/runs
+  versions_dir: artifacts/deberta/versions

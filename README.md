@@ -24,6 +24,8 @@ pip install -e .
 ## Quickstart (continuous)
 ```bash
 cp configs/example.yaml configs/local.yaml
+autoresearch-rl --config configs/local.yaml
+# or
 autoresearch-rl run --config configs/local.yaml
 ```
 

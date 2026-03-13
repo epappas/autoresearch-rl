@@ -1,23 +1,11 @@
-# Autoresearch-like Example
+# autoresearch-like (continuous CLI)
 
-This is a simple in-repo example that follows Karpathy's file pattern:
-- `prepare.py` (frozen)
-- `train.py` (mutable)
-- `program.md` (policy)
+This example runs via the **continuous CLI** using a command target.
 
-Run:
-
+## Run
 ```bash
-uv run python examples/autoresearch-like/run.py
+uv run autoresearch-rl --config examples/autoresearch-like/example.yaml
 ```
 
-Or run controller loop with this example config:
-
-```bash
-uv run python scripts/run_once.py --config examples/autoresearch-like/example.yaml
-```
-
-Output:
-- executes one bounded training run (`train.py`)
-- validates contract + comparability
-- appends `results.tsv` in this folder
+## Notes
+Parameters are injected via env vars (AR_PARAMS_JSON / AR_PARAM_*).
