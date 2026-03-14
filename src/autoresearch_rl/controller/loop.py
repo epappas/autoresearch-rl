@@ -11,11 +11,13 @@ from autoresearch_rl.eval.judge import judge_next_state
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.eval.scoring import TrialSignals, score_from_signals
 from autoresearch_rl.policy.baselines import GreedyLLMPolicy
+from autoresearch_rl.policy.learned import LearnedDiffPolicy
 from autoresearch_rl.sandbox.runner import EarlyStopConfig, TrialResult, run_trial
 from autoresearch_rl.telemetry.comparability import ComparabilityPolicy, check_comparability, hardware_fingerprint
 from autoresearch_rl.telemetry.events import emit
 from autoresearch_rl.telemetry.ledger import append_result_row, ensure_results_tsv
 from autoresearch_rl.telemetry.manifest import new_run_id, write_manifest
+from autoresearch_rl.telemetry.distill import append_distill_sample
 
 
 @dataclass
@@ -79,7 +81,7 @@ def _record_scored_trial(
     hardware_fp: str,
     decision: str,
 ) -> None:
-    emit(trace_path, event)
+    emit(trace_path, event, run_id=event.get("episode_id"))
     write_manifest(
         artifacts_dir,
         {
@@ -93,7 +95,8 @@ def _record_scored_trial(
     append_result_row(
         path=ledger_path,
         commit=commit,
-        val_bpb=float(parsed_val_bpb if parsed_val_bpb is not None else 0.0),
+        metric_name="val_bpb",
+        metric_value=float(parsed_val_bpb if parsed_val_bpb is not None else 0.0),
         memory_gb=0.0,
         status=(decision if comparable else "non_comparable"),
         description="controller_loop_trial",
@@ -119,8 +122,13 @@ def run_loop(
     program_path: str = "programs/default.md",
     contract_strict: bool = True,
     trial_timeout_s: int = 30,
+    distill_path: str = "artifacts/distill/samples.jsonl",
     trial_command: list[str] | None = None,
     comparability_policy: ComparabilityPolicy | None = None,
+    policy_type: str = "greedy",
+    learned_weights_path: str = "artifacts/policy/weights.json",
+    learned_update_every: int = 5,
+    learned_pool_size: int = 4,
     continuous: bool = False,
     max_wall_time_s: int | None = None,
     no_improve_limit: int | None = None,
@@ -128,7 +136,11 @@ def run_loop(
     failure_window: int = 10,
 ) -> LoopResult:
     episode_id = new_run_id()
-    proposal_policy = GreedyLLMPolicy()
+    base_policy = GreedyLLMPolicy()
+    if policy_type == "learned":
+        proposal_policy = LearnedDiffPolicy(base_policy=base_policy, weights_path=learned_weights_path)
+    else:
+        proposal_policy = base_policy
     ensure_results_tsv(ledger_path)
     commit = _current_commit_or_local()
 
@@ -159,6 +171,7 @@ def run_loop(
     iter_count = 0
     recent_statuses: list[str] = []
     history: list[dict] = []
+    sample_buffer: list[dict] = []
 
     previous: dict | None = None
 
@@ -178,7 +191,8 @@ def run_loop(
         }
 
         diff = proposal_policy.propose_diff(state)
-        emit(trace_path, {"type": "proposal_created", "episode_id": episode_id, "iter": iter_count, "diff_len": len(diff)})
+        logp = proposal_policy.logp(diff) if hasattr(proposal_policy, "logp") else 0.0
+        emit(trace_path, {"type": "proposal_created", "episode_id": episode_id, "iter": iter_count, "diff_len": len(diff)}, run_id=episode_id)
 
         ok_contract, contract_reason = validate_diff_against_contract(diff, runtime_contract)
         if runtime_contract.strict and not ok_contract:
@@ -192,10 +206,11 @@ def run_loop(
                 apply_patch=True,
                 rollback_patch=True,
                 early_stop=early_stop or EarlyStopConfig(enabled=False),
+                use_worktree=True,
             )
 
         parsed = parse_metrics(trial.stdout)
-        current = {"iter": iter_count, "trial": trial, "parsed": parsed, "diff": diff}
+        current = {"iter": iter_count, "trial": trial, "parsed": parsed, "diff": diff, "logp": logp}
 
         emit(
             trace_path,
@@ -213,6 +228,7 @@ def run_loop(
                 "comparable": comparable,
                 "non_comparable_reason": non_comparable_reason,
             },
+            run_id=episode_id,
         )
 
         if previous is not None:
@@ -232,6 +248,9 @@ def run_loop(
             )
             score = score_from_signals(signals)
             best = min(best, score)
+
+            distill = {"episode_id": episode_id, "iter": previous["iter"], "hint": judge.hint, "eval_score": judge.eval_score, "status": previous["trial"].status, "diff": previous["diff"]}
+            append_distill_sample(distill_path, distill)
 
             event = {
                 "type": "trial_scored",
@@ -265,6 +284,12 @@ def run_loop(
                     no_improve_streak += 1
             else:
                 no_improve_streak += 1
+
+            reward = float(best - score) if best < float("inf") else 0.0
+            sample_buffer.append({"diff": previous["diff"], "reward": reward, "logp": previous.get("logp", 0.0)})
+            if policy_type == "learned" and len(sample_buffer) >= learned_update_every:
+                proposal_policy.update(sample_buffer)
+                sample_buffer.clear()
 
             _record_scored_trial(
                 trace_path=trace_path,
