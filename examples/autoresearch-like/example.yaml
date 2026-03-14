@@ -28,6 +28,12 @@ controller:
   failure_rate_limit: 0.8
   failure_window: 5
 
+comparability:
+  budget_mode: fixed_wallclock
+  expected_budget_s: 30
+  expected_hardware_fingerprint: null
+  strict: false
+
 telemetry:
   trace_path: traces/events.jsonl
   ledger_path: artifacts/autoresearch-like/results.tsv
