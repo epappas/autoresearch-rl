@@ -22,6 +22,9 @@ autoresearch-rl = "autoresearch_rl.cli:app"
 http = [
   "requests>=2.28",
 ]
+basilica = [
+  "basilica-sdk>=0.20",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",

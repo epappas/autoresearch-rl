@@ -1,0 +1,45 @@
+name: basilica-grpo-qwen
+
+objective:
+  metric: val_bpb
+  direction: min
+
+target:
+  type: basilica
+  train_cmd:
+    - python3
+    - /app/train.py
+  timeout_s: 3600
+  basilica:
+    image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
+    gpu_count: 1
+    gpu_models: ["A100", "H100"]
+    memory: "32Gi"
+    cpu: "8"
+    storage: /data
+    ttl_seconds: 3600
+    min_gpu_memory_gb: 24
+
+policy:
+  type: grid
+  params:
+    learning_rate: [0.000003, 0.000005, 0.00001]
+    batch_size: [4, 8]
+    max_steps: [20, 30]
+
+controller:
+  max_wall_time_s: 14400
+  no_improve_limit: 5
+  failure_rate_limit: 0.8
+  failure_window: 5
+
+comparability:
+  budget_mode: fixed_wallclock
+  expected_budget_s: 3600
+  strict: false
+
+telemetry:
+  trace_path: traces/basilica-grpo/events.jsonl
+  ledger_path: artifacts/basilica-grpo/results.tsv
+  artifacts_dir: artifacts/basilica-grpo/runs
+  versions_dir: artifacts/basilica-grpo/versions

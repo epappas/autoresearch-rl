@@ -10,14 +10,26 @@ class ObjectiveConfig(BaseModel):
     direction: Literal["min", "max"] = "min"
 
 
+class BasilicaConfig(BaseModel):
+    image: str = "pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel"
+    gpu_count: int = 1
+    gpu_models: list[str] = Field(default_factory=lambda: ["A100", "H100"])
+    memory: str = "32Gi"
+    cpu: str = "8"
+    storage: str | None = "/data"
+    ttl_seconds: int = 7200
+    min_gpu_memory_gb: int | None = None
+
+
 class TargetConfig(BaseModel):
-    type: Literal["command", "http"] = "command"
+    type: Literal["command", "http", "basilica"] = "command"
     train_cmd: list[str] | None = None
     eval_cmd: list[str] | None = None
     url: str | None = None
     headers: dict[str, str] | None = None
     timeout_s: int = 3600
     workdir: str = "."
+    basilica: BasilicaConfig = Field(default_factory=BasilicaConfig)
 
 
 class PolicyConfig(BaseModel):
