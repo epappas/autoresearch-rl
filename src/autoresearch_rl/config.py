@@ -19,6 +19,7 @@ class BasilicaConfig(BaseModel):
     storage: str | None = "/data"
     ttl_seconds: int = 7200
     min_gpu_memory_gb: int | None = None
+    setup_cmd: str | None = None
 
 
 class TargetConfig(BaseModel):
