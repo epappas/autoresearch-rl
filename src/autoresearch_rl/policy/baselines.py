@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from autoresearch_rl.policy.interface import Proposal
+from autoresearch_rl.policy.interface import DiffProposal
 
 
 def _build_patch(path: Path, new_text: str) -> str:
@@ -47,35 +47,44 @@ def _recent_statuses(state: Mapping[str, object]) -> list[str]:
 
 
 @dataclass
-class RandomPolicy:
+class RandomDiffPolicy:
     seed: int = 7
 
     def __post_init__(self) -> None:
         self._rng = random.Random(self.seed)
 
-    def propose(self, state: Mapping[str, object]) -> Proposal:
+    def propose(self, state: Mapping[str, object]) -> DiffProposal:
         path = _target_path(state)
         text = path.read_text(encoding="utf-8")
         lr = self._rng.choice(["0.0020", "0.0023", "0.0026", "0.0029"])
 
         if "LEARNING_RATE =" in text:
-            new_text = text.replace("LEARNING_RATE = 0.0026", f"LEARNING_RATE = {lr}")
+            new_text = text.replace(
+                "LEARNING_RATE = 0.0026", f"LEARNING_RATE = {lr}"
+            )
             if new_text == text:
                 new_text = text + f"\n# learning_rate_candidate={lr}\n"
         else:
             new_text = text + f"\n# learning_rate_candidate={lr}\n"
 
-        return Proposal(diff=_build_patch(path, new_text), rationale="random_lr_choice")
+        return DiffProposal(
+            diff=_build_patch(path, new_text),
+            rationale="random_lr_choice",
+        )
 
     def propose_diff(self, state: Mapping[str, object]) -> str:
         return self.propose(state).diff
+
+
+# Backward-compatible alias
+RandomPolicy = RandomDiffPolicy
 
 
 @dataclass
 class GreedyLLMPolicy:
     improve_threshold: float = 1.3
 
-    def propose(self, state: Mapping[str, object]) -> Proposal:
+    def propose(self, state: Mapping[str, object]) -> DiffProposal:
         path = _target_path(state)
         text = path.read_text(encoding="utf-8")
 
@@ -87,12 +96,15 @@ class GreedyLLMPolicy:
 
         no_improve = int(state.get("no_improve_streak", 0) or 0)
         recent = _recent_statuses(state)
-        recent_failures = sum(1 for s in recent if s in {"failed", "timeout", "rejected"})
+        recent_failures = sum(
+            1 for s in recent if s in {"failed", "timeout", "rejected"}
+        )
 
         if no_improve >= 3 or recent_failures >= 2:
-            # back off: try lower LR for stability
             if "LEARNING_RATE =" in text:
-                new_text = text.replace("LEARNING_RATE = 0.0026", "LEARNING_RATE = 0.0020")
+                new_text = text.replace(
+                    "LEARNING_RATE = 0.0026", "LEARNING_RATE = 0.0020"
+                )
                 if new_text == text:
                     new_text = text + "\nLEARNING_RATE = 0.0020\n"
             else:
@@ -113,7 +125,9 @@ class GreedyLLMPolicy:
                 new_text = text + "\nGRAD_CLIP = 0.8\n"
             rationale = "tighten_optimization"
 
-        return Proposal(diff=_build_patch(path, new_text), rationale=rationale)
+        return DiffProposal(
+            diff=_build_patch(path, new_text), rationale=rationale
+        )
 
     def propose_diff(self, state: Mapping[str, object]) -> str:
         return self.propose(state).diff

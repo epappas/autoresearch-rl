@@ -6,14 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from autoresearch_rl.policy.interface import Proposal
+from autoresearch_rl.policy.interface import DiffProposal
 from autoresearch_rl.sandbox.diff_utils import extract_touched_files_from_diff
 
 
 def _diff_features(diff: str) -> list[float]:
     lines = diff.splitlines()
-    adds = sum(1 for l in lines if l.startswith("+"))
-    dels = sum(1 for l in lines if l.startswith("-"))
+    adds = sum(1 for line in lines if line.startswith("+"))
+    dels = sum(1 for line in lines if line.startswith("-"))
     files = len(extract_touched_files_from_diff(diff))
     length = len(diff)
     return [1.0, float(files), float(adds), float(dels), float(length)]
@@ -44,15 +44,19 @@ class LearnedDiffPolicy:
 
     def _save_weights(self, w: list[float]) -> None:
         Path(self.weights_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(self.weights_path).write_text(json.dumps(w), encoding="utf-8")
+        Path(self.weights_path).write_text(
+            json.dumps(w), encoding="utf-8"
+        )
 
-    def propose(self, state: dict, pool_size: int = 4) -> Proposal:
-        candidates: list[Proposal] = []
+    def propose(self, state: dict, pool_size: int = 4) -> DiffProposal:
+        candidates: list[DiffProposal] = []
         for _ in range(pool_size):
             p = self.base_policy.propose(state)
             candidates.append(p)
         weights = self._load_weights()
-        scores = [_dot(_diff_features(p.diff), weights) for p in candidates]
+        scores = [
+            _dot(_diff_features(p.diff), weights) for p in candidates
+        ]
         probs = _softmax(scores)
         idx = max(range(len(candidates)), key=lambda i: probs[i])
         chosen = candidates[idx]
@@ -78,5 +82,8 @@ class LearnedDiffPolicy:
             ratio = math.exp(logp - old_logp)
             clipped = max(0.8, min(1.2, ratio))
             grad_scale = -min(ratio, clipped) * reward
-            weights = [w - self.lr * grad_scale * f for w, f in zip(weights, feats)]
+            weights = [
+                w - self.lr * grad_scale * f
+                for w, f in zip(weights, feats)
+            ]
         self._save_weights(weights)

@@ -21,7 +21,7 @@ class TargetConfig(BaseModel):
 
 
 class PolicyConfig(BaseModel):
-    type: Literal["grid", "random", "static"] = "static"
+    type: Literal["grid", "random", "static", "learned"] = "static"
     params: dict[str, list[float] | list[int] | list[str] | list[bool]] = Field(default_factory=dict)
     seed: int = 7
 
@@ -39,7 +39,18 @@ class ControllerConfig(BaseModel):
     no_improve_limit: int | None = None
     failure_rate_limit: float | None = None
     failure_window: int = 10
-    seed: int | None = None
+    checkpoint_path: str | None = None
+
+
+class ScoringConfig(BaseModel):
+    val_bpb: float = 1.0
+    loss: float = 0.15
+    fail_penalty: float = 0.8
+    timeout_penalty: float = 1.2
+    neutral_penalty: float = 0.05
+    directional_bonus: float = 0.2
+    early_stop_penalty: float = 0.4
+    eval_score_weight: float = 0.25
 
 
 class TelemetryConfig(BaseModel):
@@ -47,6 +58,8 @@ class TelemetryConfig(BaseModel):
     ledger_path: str = "artifacts/results.tsv"
     artifacts_dir: str = "artifacts/runs"
     versions_dir: str = "artifacts/versions"
+    max_file_size_bytes: int = 50 * 1024 * 1024  # 50MB
+    max_rotated_files: int = 5
 
 
 class RunConfig(BaseModel):
@@ -56,4 +69,5 @@ class RunConfig(BaseModel):
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
     controller: ControllerConfig = Field(default_factory=ControllerConfig)
     comparability: ComparabilityConfig = Field(default_factory=ComparabilityConfig)
+    scoring: ScoringConfig = Field(default_factory=ScoringConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)

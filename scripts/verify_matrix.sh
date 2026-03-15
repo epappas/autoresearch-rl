@@ -11,7 +11,7 @@ fi
 pytest -q tests/test_contract.py
 
 # 2) Strict comparability blocks budget mismatch
-PYTHONPATH=src python3 - <<'PY'
+python3 - <<'PY'
 from autoresearch_rl.controller.loop import run_loop
 from autoresearch_rl.telemetry.comparability import ComparabilityPolicy
 try:
@@ -31,7 +31,7 @@ PY
 
 # 3) Comparable run appends ledger metadata
 rm -f artifacts/verify/results.tsv
-PYTHONPATH=src python3 - <<'PY'
+python3 - <<'PY'
 from autoresearch_rl.controller.loop import run_loop
 from autoresearch_rl.telemetry.comparability import ComparabilityPolicy
 run_loop(

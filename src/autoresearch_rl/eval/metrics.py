@@ -7,7 +7,7 @@ _FLOAT = r"[-+]?(?:\d+\.\d+|\d+|\.\d+)(?:[eE][-+]?\d+)?"
 VAL_BPB_RE = re.compile(rf"val[_-]?bpb\s*[:=]\s*({_FLOAT})", re.IGNORECASE)
 LOSS_RE = re.compile(rf"(?:^|\s)loss\s*[:=]\s*({_FLOAT})", re.IGNORECASE)
 TIME_RE = re.compile(rf"(?:time|elapsed|training_seconds)\s*[:=]\s*({_FLOAT})", re.IGNORECASE)
-STEP_RE = re.compile(rf"(?:step|num_steps)\s*[:=]\s*(\d+)", re.IGNORECASE)
+STEP_RE = re.compile(r"(?:step|num_steps)\s*[:=]\s*(\d+)", re.IGNORECASE)
 
 
 @dataclass

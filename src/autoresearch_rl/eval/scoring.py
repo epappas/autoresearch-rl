@@ -11,6 +11,8 @@ class ScoreWeights:
     timeout_penalty: float = 1.2
     neutral_penalty: float = 0.05
     directional_bonus: float = 0.2
+    early_stop_penalty: float = 0.4
+    eval_score_weight: float = 0.25
 
 
 @dataclass
@@ -46,10 +48,10 @@ def score_from_signals(signals: TrialSignals, weights: ScoreWeights | None = Non
     elif signals.status == "rejected":
         score += w.timeout_penalty
     elif signals.status == "early_stopped":
-        score += 0.4
+        score += w.early_stop_penalty
 
     # next-state evaluative signal: +1 helps, -1 hurts, 0 is neutral penalty
-    score -= 0.25 * float(signals.eval_score)
+    score -= w.eval_score_weight * float(signals.eval_score)
     if signals.eval_score == 0:
         score += w.neutral_penalty
 

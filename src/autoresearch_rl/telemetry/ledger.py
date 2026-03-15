@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from autoresearch_rl.telemetry.rotation import rotate_if_needed
+
 HEADER = [
     "commit",
     "metric_name",
@@ -48,8 +50,16 @@ def append_result_row(
     hardware_fingerprint: str,
     comparable: bool,
     non_comparable_reason: str,
+    max_file_size_bytes: int | None = None,
+    max_rotated_files: int = 5,
 ) -> None:
     p = ensure_results_tsv(path)
+
+    if max_file_size_bytes is not None:
+        rotate_if_needed(path, max_file_size_bytes, max_rotated_files)
+        # Re-ensure header exists after potential rotation
+        p = ensure_results_tsv(path)
+
     with p.open("a", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter="\t")
         w.writerow(
