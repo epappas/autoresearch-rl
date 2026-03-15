@@ -80,7 +80,7 @@ def main() -> None:
 
     train_args = TrainingArguments(
         output_dir=args.output_dir,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="no",
         learning_rate=args.learning_rate,
         per_device_train_batch_size=args.batch_size,
