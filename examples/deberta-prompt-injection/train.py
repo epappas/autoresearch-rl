@@ -45,6 +45,12 @@ def main() -> None:
                 args.grad_clip = float(params["grad_clip"])
             if "use_qk_norm" in params:
                 args.use_qk_norm = bool(params["use_qk_norm"])
+            if "epochs" in params:
+                args.epochs = int(params["epochs"])
+            if "batch_size" in params:
+                args.batch_size = int(params["batch_size"])
+            if "weight_decay" in params:
+                args.weight_decay = float(params["weight_decay"])
         except json.JSONDecodeError:
             pass
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
