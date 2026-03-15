@@ -97,7 +97,7 @@ def main() -> None:
         args=train_args,
         train_dataset=ds["train"],
         eval_dataset=ds["validation"],
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
         compute_metrics=compute_metrics,
     )
