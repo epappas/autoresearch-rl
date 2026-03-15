@@ -9,3 +9,9 @@ __pycache__/
 .env
 artifacts/
 traces/
+build/
+dist/
+*.egg-info/
+UNKNOWN.egg-info/
+results.tsv
+uv.lock

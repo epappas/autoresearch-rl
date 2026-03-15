@@ -1,0 +1,65 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build & Development Commands
+
+```bash
+# Install (requires Python >= 3.10, uv is the primary tool)
+uv sync --extra dev
+
+# Run tests
+uv run pytest -q                          # all tests
+uv run pytest tests/test_contract.py -q   # single test file
+uv run pytest -k test_name -q             # single test by name
+
+# Lint & type check
+uv run ruff check src/ tests/
+uv run mypy src/
+
+# Verification matrix (runs in CI alongside pytest)
+chmod +x scripts/verify_matrix.sh && uv run bash scripts/verify_matrix.sh
+
+# Run the CLI
+uv run autoresearch-rl --config configs/example.yaml
+uv run autoresearch-rl validate --config configs/example.yaml
+uv run autoresearch-rl print-config --config configs/example.yaml
+uv run autoresearch-rl --config configs/example.yaml --override controller.max_wall_time_s=10
+```
+
+## Architecture
+
+Two independent loop systems coexist in the codebase:
+
+### 1. Continuous CLI loop (primary, actively used)
+Runtime path: `cli.py` -> `controller/continuous.py` -> `target/*` -> `telemetry/*`
+
+- **Targets** (`target/`): Pluggable adapters implementing `TargetAdapter` protocol (run + eval). Two types:
+  - `CommandTarget`: runs local/Docker commands, injects params via `AR_PARAMS_JSON` and `AR_PARAM_<NAME>` env vars
+  - `HttpTarget`: calls remote endpoints (vLLM/sglang)
+  - Registry in `target/registry.py` builds the correct adapter from config
+- **Policy** (`policy/search.py`): Parameter proposal strategies (`GridPolicy`, `RandomPolicy`, `StaticPolicy`) that cycle through hyperparameter combinations
+- **Controller** (`controller/continuous.py`): Orchestrates the loop with stop guards (wall time, no-improvement streak, failure rate). Each iteration: propose params -> train -> eval -> keep/discard -> emit telemetry
+- **Config** (`config.py`): Pydantic models for all config sections. YAML config validated via `RunConfig.model_validate()`
+
+### 2. Legacy contract/sandbox loop (not used by CLI)
+Runtime path: `controller/loop.py` -> `sandbox/runner.py` -> `eval/*`
+
+- **Sandbox** (`sandbox/`): Validates diffs (`validator.py`, `ast_policy.py`), applies patches via git worktrees, runs trials with early stopping and power-law forecasting
+- **Contract** (`controller/contract.py`): Enforces frozen/mutable file boundaries - diffs can only touch the designated mutable file
+- **Eval** (`eval/`): `judge.py` does heuristic next-state voting, `scoring.py` computes composite scores, `metrics.py` parses stdout for val_bpb/loss
+- **Policy** (`policy/baselines.py`, `policy/learned.py`): Diff-proposal policies - `GreedyLLMPolicy` proposes code changes, `LearnedDiffPolicy` learns weights via PPO-style updates
+
+### Telemetry (`telemetry/`)
+Shared by both loops:
+- `events.py`: JSONL trace emission
+- `ledger.py`: TSV results ledger with comparability metadata
+- `manifest.py`: per-run manifest files
+- `comparability.py`: hardware fingerprinting and budget-mode checks (strict mode blocks mismatched runs)
+- `distill.py`: distillation sample collection (legacy loop only)
+
+### Key design patterns
+- **Keep/discard**: iterations that beat the best score are "kept" with versioned artifacts in `artifacts/versions/v####/`
+- **Comparability enforcement**: runs record hardware fingerprint + budget mode; strict mode rejects budget mismatches
+- **Objective direction**: `direction: min` or `max` in config; internally normalized via `_score()` so lower is always better
+- Ruff line length: 100

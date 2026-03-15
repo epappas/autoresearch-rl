@@ -2,14 +2,9 @@ from __future__ import annotations
 
 import itertools
 import random
-from dataclasses import dataclass
 from typing import Iterable
 
-
-@dataclass
-class ParamProposal:
-    params: dict[str, object]
-    rationale: str
+from autoresearch_rl.policy.interface import ParamProposal
 
 
 class ParamPolicy:

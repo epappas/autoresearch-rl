@@ -1,0 +1,33 @@
+{
+  "status": "ALL_COMPLETE",
+  "completed_count": 25,
+  "total_count": 25,
+  "test_suite": "200 pass, 4 pre-existing failures",
+  "tasks": {
+    "A1-unify-loops": {"status": "complete", "phase": "A"},
+    "A2-fix-seed": {"status": "complete", "phase": "A"},
+    "A3-unify-policies": {"status": "complete", "phase": "A"},
+    "A4-fix-version": {"status": "complete", "phase": "A"},
+    "A5-cache-hw-fp": {"status": "complete", "phase": "A"},
+    "A6-fix-run-once": {"status": "complete", "phase": "A"},
+    "B1-mdp-primitives": {"status": "complete", "phase": "B"},
+    "B2-trajectory-buffer": {"status": "complete", "phase": "B"},
+    "B3-gae": {"status": "complete", "phase": "B"},
+    "C1-ppo-network": {"status": "complete", "phase": "C"},
+    "C2-entropy-novelty": {"status": "complete", "phase": "C"},
+    "D1-checkpoints": {"status": "complete", "phase": "D"},
+    "D2-graceful-shutdown": {"status": "complete", "phase": "D"},
+    "D3-telemetry-rotation": {"status": "complete", "phase": "D"},
+    "D4-metrics-aggregation": {"status": "complete", "phase": "D"},
+    "E1-diverse-judges": {"status": "complete", "phase": "E"},
+    "E2-forecaster-integration": {"status": "complete", "phase": "E"},
+    "E3-scoring-config": {"status": "complete", "phase": "E"},
+    "F1-teacher-snapshots": {"status": "complete", "phase": "F"},
+    "F2-sdpo-loss": {"status": "complete", "phase": "F"},
+    "F3-distill-schema": {"status": "complete", "phase": "F"},
+    "G1-sdft-module": {"status": "complete", "phase": "G"},
+    "G2-directional-sink": {"status": "complete", "phase": "G"},
+    "H1-promotion-gates": {"status": "complete", "phase": "H"},
+    "H2-experiment-tracking": {"status": "complete", "phase": "H"}
+  }
+}

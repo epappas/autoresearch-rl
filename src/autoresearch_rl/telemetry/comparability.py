@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import functools
 import hashlib
-import os
 import platform
 import subprocess
 from dataclasses import dataclass
@@ -15,6 +15,7 @@ class ComparabilityPolicy:
     strict: bool = True
 
 
+@functools.lru_cache(maxsize=1)
 def hardware_fingerprint() -> str:
     parts = [
         platform.system(),

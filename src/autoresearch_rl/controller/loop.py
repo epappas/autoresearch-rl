@@ -3,10 +3,16 @@ from __future__ import annotations
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 from autoresearch_rl.controller.contract import ContractConfig, validate_contract_files_exist, validate_diff_against_contract
+from autoresearch_rl.controller.helpers import (
+    check_failure_rate,
+    check_no_improve,
+    check_wall_time,
+    current_commit,
+)
+from autoresearch_rl.controller.types import LoopResult
 from autoresearch_rl.eval.judge import judge_next_state
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.eval.scoring import TrialSignals, score_from_signals
@@ -17,23 +23,9 @@ from autoresearch_rl.telemetry.comparability import ComparabilityPolicy, check_c
 from autoresearch_rl.telemetry.events import emit
 from autoresearch_rl.telemetry.ledger import append_result_row, ensure_results_tsv
 from autoresearch_rl.telemetry.manifest import new_run_id, write_manifest
-from autoresearch_rl.telemetry.distill import append_distill_sample
-
-
-@dataclass
-class LoopResult:
-    best_score: float
-    iterations: int
-
-
-def _current_commit_or_local(cwd: str | None = None) -> str:
-    try:
-        cp = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=cwd, capture_output=True, text=True, check=False)
-        if cp.returncode == 0:
-            return (cp.stdout or "").strip() or "local"
-    except Exception:
-        pass
-    return "local"
+from autoresearch_rl.distillation.sink import DistillationSample, DistillationSink
+from autoresearch_rl.distillation.trainer import DistillationTrainer
+from autoresearch_rl.telemetry.distill import DistillSample, append_distill_sample
 
 
 def _infer_workdir(mutable_file: str) -> str:
@@ -142,7 +134,7 @@ def run_loop(
     else:
         proposal_policy = base_policy
     ensure_results_tsv(ledger_path)
-    commit = _current_commit_or_local()
+    commit = current_commit()
 
     workdir = _infer_workdir(mutable_file)
     runtime_contract = ContractConfig(
@@ -172,13 +164,15 @@ def run_loop(
     recent_statuses: list[str] = []
     history: list[dict] = []
     sample_buffer: list[dict] = []
+    distill_sink = DistillationSink(batch_size=16)
+    distill_trainer = DistillationTrainer()
 
     previous: dict | None = None
 
     while True:
         if not continuous and iter_count >= max_iterations:
             break
-        if continuous and max_wall_time_s is not None and (time.monotonic() - start_ts) >= max_wall_time_s:
+        if continuous and check_wall_time(start_ts, max_wall_time_s):
             break
 
         state = {
@@ -249,8 +243,34 @@ def run_loop(
             score = score_from_signals(signals)
             best = min(best, score)
 
-            distill = {"episode_id": episode_id, "iter": previous["iter"], "hint": judge.hint, "eval_score": judge.eval_score, "status": previous["trial"].status, "diff": previous["diff"]}
+            distill = DistillSample(
+                episode_id=episode_id,
+                iteration=previous["iter"],
+                hint=judge.hint,
+                eval_score=judge.eval_score,
+                status=previous["trial"].status,
+                diff=previous["diff"],
+            )
             append_distill_sample(distill_path, distill)
+
+            distill_sink.add(DistillationSample(
+                hint=judge.hint,
+                eval_score=judge.eval_score,
+            ))
+
+            distill_result = distill_trainer.maybe_train(distill_sink)
+            if distill_result is not None:
+                emit(
+                    trace_path,
+                    {
+                        "type": "distillation_step",
+                        "episode_id": episode_id,
+                        "iter": previous["iter"],
+                        "sdft_loss": distill_result.loss,
+                        "num_samples": distill_result.num_samples,
+                    },
+                    run_id=episode_id,
+                )
 
             event = {
                 "type": "trial_scored",
@@ -321,12 +341,12 @@ def run_loop(
             if len(recent_statuses) > max(1, failure_window):
                 recent_statuses.pop(0)
 
-            if no_improve_limit is not None and no_improve_streak >= no_improve_limit:
+            if check_no_improve(no_improve_streak, no_improve_limit):
                 break
-            if failure_rate_limit is not None and len(recent_statuses) >= max(1, failure_window):
-                fails = sum(1 for s in recent_statuses if s in {"failed", "timeout", "rejected"})
-                if (fails / len(recent_statuses)) >= failure_rate_limit:
-                    break
+            if check_failure_rate(
+                recent_statuses, failure_rate_limit, failure_window
+            ):
+                break
 
         previous = current
         iter_count += 1
@@ -379,4 +399,8 @@ def run_loop(
             decision=decision,
         )
 
-    return LoopResult(best_score=best, iterations=iter_count)
+    return LoopResult(
+        best_score=best,
+        best_value=incumbent_val_bpb if incumbent_val_bpb < float("inf") else None,
+        iterations=iter_count,
+    )

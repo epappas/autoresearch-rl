@@ -7,10 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -e .[dev]
-      - run: pytest -q
+      - run: uv sync --extra dev
+      - run: uv run pytest -q
+      - run: uv run ruff check src/ tests/
       - run: chmod +x scripts/verify_matrix.sh
-      - run: ./scripts/verify_matrix.sh
+      - run: uv run bash scripts/verify_matrix.sh

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from autoresearch_rl.eval.metrics import parse_metric_series, parse_metrics
+from autoresearch_rl.forecasting import _fit_power_law_points
 from autoresearch_rl.sandbox.diff_utils import extract_touched_files_from_diff
 from autoresearch_rl.sandbox.validator import validate_diff
 
@@ -106,37 +107,8 @@ def _rollback_patch_with_git(workdir: str, touched_files: list[str]) -> None:
 
 
 def _fit_power_law(points: list[tuple[float, float]]) -> tuple[float, float, float] | None:
-    # Fit y = a * t^b + c via log transform on (y-c) with simple grid for c
-    if len(points) < 3:
-        return None
-    pts = [(t, y) for t, y in points if t > 0]
-    if len(pts) < 3:
-        return None
-    ys = [y for _, y in pts]
-    c_candidates = [min(ys) * 0.5, min(ys) * 0.8, min(ys) * 0.9]
-    best: tuple[float, float, float, float] | None = None
-    for c in c_candidates:
-        try:
-            xs = [__import__('math').log(t) for t, _ in pts]
-            zs = [__import__('math').log(max(1e-8, y - c)) for _, y in pts]
-        except ValueError:
-            continue
-        n = len(xs)
-        mean_x = sum(xs) / n
-        mean_z = sum(zs) / n
-        num = sum((x - mean_x) * (z - mean_z) for x, z in zip(xs, zs))
-        den = sum((x - mean_x) ** 2 for x in xs)
-        if den == 0:
-            continue
-        b = num / den
-        a = __import__('math').exp(mean_z - b * mean_x)
-        resid = sum((a * (t ** b) + c - y) ** 2 for t, y in pts)
-        if best is None or resid < best[0]:
-            best = (resid, a, b, c)
-    if best is None:
-        return None
-    _, a, b, c = best
-    return a, b, c
+    """Delegate to shared forecasting module."""
+    return _fit_power_law_points(points)
 
 
 def _forecast_value(points: list[tuple[float, float]], t_max: float) -> float | None:
