@@ -3,11 +3,13 @@
 This document captures the gap between the current codebase and the research corpus
 (AutoResearch-RL, SDPO, SDFT papers). Tasks are organized by phase, with dependencies noted.
 
+**Status: ALL COMPLETE (25/25)** — see `.ralph/status.json` for machine-readable record.
+
 ---
 
 ## Phase A: Structural Cleanup (no new features, pure refactor)
 
-### A.1 Unify loop controllers
+### A.1 Unify loop controllers [COMPLETE]
 **Problem:** Two independent loop systems (`controller/continuous.py` and `controller/loop.py`)
 with duplicated logic: separate `LoopResult` dataclasses, separate `_current_commit` helpers,
 separate stop-guard implementations, separate telemetry wiring.
@@ -19,13 +21,13 @@ stop-guard evaluation, telemetry emission) into reusable functions.
 **Files:** `controller/continuous.py`, `controller/loop.py`, `cli.py`, `scripts/run_once.py`
 **Dependencies:** None. All subsequent tasks build on the unified loop.
 
-### A.2 Fix duplicate seed field in ControllerConfig
+### A.2 Fix duplicate seed field in ControllerConfig [COMPLETE]
 **Problem:** `config.py` `ControllerConfig` declares `seed: int | None = None` twice (lines 37, 42).
 
 **Files:** `config.py`
 **Dependencies:** None.
 
-### A.3 Unify policy hierarchies
+### A.3 Unify policy hierarchies [COMPLETE]
 **Problem:** Two unrelated policy abstractions coexist:
 - `policy/search.py`: `ParamPolicy` base class with `GridPolicy`, `RandomPolicy`, `StaticPolicy`
   (used by continuous loop for hyperparameter proposals)
@@ -43,13 +45,13 @@ and fold its protocol into the unified base.
 `controller/continuous.py`, `controller/loop.py`
 **Dependencies:** A.1
 
-### A.4 Fix version mismatch
+### A.4 Fix version mismatch [COMPLETE]
 **Problem:** `pyproject.toml` says `0.2.0`, `__init__.py` says `0.1.0`.
 
 **Files:** `__init__.py`
 **Dependencies:** None.
 
-### A.5 Cache hardware_fingerprint()
+### A.5 Cache hardware_fingerprint() [COMPLETE]
 **Problem:** `comparability.py` shells out to `nvidia-smi` on every call. This is called per-iteration
 in the loop. Hardware does not change during process lifetime.
 
@@ -58,7 +60,7 @@ in the loop. Hardware does not change during process lifetime.
 **Files:** `telemetry/comparability.py`
 **Dependencies:** None.
 
-### A.6 Validate config in run_once.py
+### A.6 Validate config in run_once.py [COMPLETE]
 **Problem:** `scripts/run_once.py` calls `yaml.safe_load()` directly, bypassing `RunConfig` validation
 that the CLI uses. Can silently run with missing/invalid fields.
 
@@ -71,7 +73,7 @@ that the CLI uses. Can silently run with missing/invalid fields.
 
 ## Phase B: MDP Foundation (research formalization)
 
-### B.1 Define typed Research MDP primitives
+### B.1 Define typed Research MDP primitives [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 2 -- Research MDP with State, Action, Reward, Transition.
 
 **Problem:** States are implicit dicts. Actions are untyped. Rewards are computed ad-hoc in multiple
@@ -86,7 +88,7 @@ places. There is no formal MDP structure.
 **Files:** New `mdp.py`, refactoring of `controller/`, `policy/`, `eval/scoring.py`
 **Dependencies:** A.1, A.3
 
-### B.2 Implement trajectory buffer
+### B.2 Implement trajectory buffer [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 2 -- "trajectories tau = (s_0, a_0, r_0, ..., s_T)"
 
 **Problem:** No episode storage. Policy updates process one sample at a time. No batching for
@@ -99,7 +101,7 @@ and episode windowing.
 **Files:** New `trajectory.py`
 **Dependencies:** B.1
 
-### B.3 Implement GAE (Generalized Advantage Estimation)
+### B.3 Implement GAE (Generalized Advantage Estimation) [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 2 -- GAE for variance-reduced advantage estimation.
 
 **Problem:** Advantage in `learned.py` is `reward - running_mean`. No temporal structure, no
@@ -115,7 +117,7 @@ value function V(s), no lambda parameter.
 
 ## Phase C: PPO Policy Training
 
-### C.1 Implement PPO policy network
+### C.1 Implement PPO policy network [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 2 -- PPO with clipped objective for edit generation.
 
 **Problem:** `LearnedDiffPolicy` is a 5-weight linear scorer over hand-crafted features. This is
@@ -131,7 +133,7 @@ distribution.
 **Files:** `policy/learned.py` (rewrite), new `policy/ppo.py`
 **Dependencies:** A.3, B.1, B.2, B.3
 
-### C.2 Add entropy regularization and novelty bonus
+### C.2 Add entropy regularization and novelty bonus [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 5 -- entropy bonus H(pi) + novelty based on distance from
 previously explored states.
 
@@ -147,7 +149,7 @@ Add novelty bonus based on history dissimilarity.
 
 ## Phase D: Infrastructure Robustness
 
-### D.1 Implement checkpoint management for loop state
+### D.1 Implement checkpoint management for loop state [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 3 -- "policy checkpointing to enable rollback."
 
 **Problem:** If the process dies mid-run, all progress is lost. `best_value` is only in memory.
@@ -159,7 +161,7 @@ each iteration. Support resume from checkpoint on startup.
 **Files:** New `checkpoint.py`, unified loop controller, `config.py`, `cli.py`
 **Dependencies:** A.1
 
-### D.2 Implement graceful shutdown with signal handling
+### D.2 Implement graceful shutdown with signal handling [COMPLETE]
 **Problem:** `while True` loop with no signal handling. SIGTERM/SIGINT corrupt mid-write files.
 
 **Resolution:** Register SIGTERM/SIGINT handlers that set a `shutdown_requested` flag. Loop checks
@@ -168,7 +170,7 @@ flag between iterations. On shutdown: finish current iteration, persist checkpoi
 **Files:** Unified loop controller, `cli.py`
 **Dependencies:** A.1, D.1
 
-### D.3 Add telemetry rotation
+### D.3 Add telemetry rotation [COMPLETE]
 **Problem:** Append-only JSONL/TSV files grow unbounded in perpetual loops.
 
 **Resolution:** Rotate telemetry files when they exceed a configurable size. Keep configurable
@@ -177,7 +179,7 @@ number of rotated files.
 **Files:** `telemetry/events.py`, `telemetry/ledger.py`, `config.py`
 **Dependencies:** A.1
 
-### D.4 Add metrics aggregation and summary reporting
+### D.4 Add metrics aggregation and summary reporting [COMPLETE]
 **Problem:** No episode-level summaries, no rolling averages, no trend detection across episodes.
 The research requires "comprehensive telemetry with trend analysis" for the forecasting module.
 
@@ -191,7 +193,7 @@ statistics (mean, median, min, max, trend slope) over the telemetry stream.
 
 ## Phase E: Evaluation and Scoring Alignment
 
-### E.1 Implement real multi-judge diversity
+### E.1 Implement real multi-judge diversity [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 4 -- "Multi-Judge Evaluation with diverse perspectives."
 
 **Problem:** `eval/judge.py` calls `_heuristic_vote()` N times with identical inputs, producing
@@ -203,7 +205,7 @@ trend-based) that can disagree. `judge_next_state()` should aggregate truly dive
 **Files:** `eval/judge.py`
 **Dependencies:** None.
 
-### E.2 Integrate early-stop forecaster into continuous loop
+### E.2 Integrate early-stop forecaster into continuous loop [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 4 -- "power-law forecasting for early abort."
 
 **Problem:** The power-law forecaster exists in `sandbox/runner.py` (`_fit_power_law`,
@@ -218,7 +220,7 @@ target execution (for command targets, monitor stdout stream and forecast).
 `target/command.py`
 **Dependencies:** A.1
 
-### E.3 Make scoring weights configurable
+### E.3 Make scoring weights configurable [COMPLETE]
 **Problem:** `eval/scoring.py` has hardcoded magic numbers for penalties and bonuses
 (`fail_penalty=0.8`, `timeout_penalty=1.2`, `neutral_penalty=0.05`, `directional_bonus=0.2`).
 No connection to SDPO adaptive weighting.
@@ -233,7 +235,7 @@ exposed in YAML config). Add SDPO-style adaptive alpha: `alpha_t = min(1, R_prev
 
 ## Phase F: Self-Distillation Pipeline (SDPO)
 
-### F.1 Implement policy checkpointing for teacher snapshots
+### F.1 Implement policy checkpointing for teacher snapshots [COMPLETE]
 **Paper ref:** SDPO Section 3 -- "freeze pi_{t-1} as teacher at each iteration."
 
 **Problem:** No mechanism to snapshot a policy version. `LearnedDiffPolicy` writes weights to a
@@ -245,7 +247,7 @@ The previous checkpoint serves as teacher for the next SDPO update.
 **Files:** `policy/learned.py` (or `policy/ppo.py` after C.1), `checkpoint.py`
 **Dependencies:** C.1, D.1
 
-### F.2 Implement SDPO loss function
+### F.2 Implement SDPO loss function [COMPLETE]
 **Paper ref:** SDPO -- `L_SDPO = L_RL + alpha_t * D_KL(pi_teacher || pi_student)`.
 
 **Problem:** No SDPO loss. The `telemetry/distill.py` appends JSONL records but performs no
@@ -258,7 +260,7 @@ between teacher (previous checkpoint) and student (current) policy distributions
 **Files:** New `policy/sdpo.py`, `telemetry/distill.py` (schema upgrade)
 **Dependencies:** F.1, C.1
 
-### F.3 Add distillation sample schema validation
+### F.3 Add distillation sample schema validation [COMPLETE]
 **Paper ref:** SDPO Section 4 -- distillation records must include KL-divergence bounds and
 preference pair data.
 
@@ -273,7 +275,7 @@ preference pair data.
 
 ## Phase G: SDFT Integration
 
-### G.1 Implement SDFT token-level distillation module
+### G.1 Implement SDFT token-level distillation module [COMPLETE]
 **Paper ref:** SDFT -- softmax divergence fine-tuning with token-level teacher distribution matching.
 
 **Problem:** No SDFT implementation. The directional branch (`hint` in judge output) is captured
@@ -285,7 +287,7 @@ Start with top-K teacher logits only for cost control. Gate by confidence.
 **Files:** New `distillation/sdft.py`
 **Dependencies:** F.1 (needs teacher/student framework)
 
-### G.2 Wire directional feedback into distillation sink
+### G.2 Wire directional feedback into distillation sink [COMPLETE]
 **Paper ref:** SDFT Section 3 -- "convert hints into teacher logits for distillation."
 
 **Problem:** `eval/judge.py` produces `hint` strings that are logged but never consumed by any
@@ -301,7 +303,7 @@ formats them for SDFT-style updates.
 
 ## Phase H: Policy Promotion and Lifecycle
 
-### H.1 Implement policy promotion gates
+### H.1 Implement policy promotion gates [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 3 -- "commit/revert to best-known config."
 **Paper ref:** SDPO Section 5 -- "gradual policy promotion with rollback checkpoints."
 
@@ -314,7 +316,7 @@ On sustained degradation (detected by forecaster), rollback to last promoted che
 **Files:** Unified loop controller, `checkpoint.py`
 **Dependencies:** D.1, F.1, E.2
 
-### H.2 Implement experiment tracking interface
+### H.2 Implement experiment tracking interface [COMPLETE]
 **Paper ref:** AutoResearch-RL Section 5 -- "replayability and auditability."
 
 **Problem:** All experiment data goes to local files with no structured query, comparison, or
