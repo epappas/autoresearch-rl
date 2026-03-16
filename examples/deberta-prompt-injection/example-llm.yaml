@@ -1,4 +1,4 @@
-name: deberta-prompt-injection
+name: deberta-prompt-injection-llm
 
 objective:
   metric: val_bpb
@@ -16,7 +16,7 @@ target:
     - --val-file
     - data/val.jsonl
     - --output-dir
-    - /tmp/deberta-out
+    - /tmp/deberta-llm-out
   eval_cmd:
     - python3
     - train.py
@@ -25,20 +25,24 @@ target:
     - --val-file
     - data/val.jsonl
     - --output-dir
-    - /tmp/deberta-out
+    - /tmp/deberta-llm-out
 
 policy:
-  type: grid
+  type: llm
   params:
     learning_rate: [0.00001, 0.00002, 0.00003]
     epochs: [1, 2, 3]
     weight_decay: [0.0, 0.01, 0.1]
     batch_size: [4, 8]
     grad_clip: [0.5, 1.0]
+  llm_api_url: "https://llm.chutes.ai/v1"
+  llm_model: "MiniMaxAI/MiniMax-M2.5-TEE"
+  llm_api_key_env: "CHUTES_API_KEY"
+  llm_timeout_s: 30
 
 controller:
   max_wall_time_s: 7200
-  no_improve_limit: 5
+  no_improve_limit: 6
   failure_rate_limit: 0.8
   failure_window: 5
 
@@ -49,7 +53,7 @@ comparability:
   strict: false
 
 telemetry:
-  trace_path: traces/events.jsonl
-  ledger_path: artifacts/deberta/results.tsv
-  artifacts_dir: artifacts/deberta/runs
-  versions_dir: artifacts/deberta/versions
+  trace_path: traces/deberta-llm/events.jsonl
+  ledger_path: artifacts/deberta-llm/results.tsv
+  artifacts_dir: artifacts/deberta-llm/runs
+  versions_dir: artifacts/deberta-llm/versions

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 
@@ -15,11 +15,7 @@ class Proposal:
 class ParamProposal(Proposal):
     """Proposal carrying hyperparameter overrides (continuous loop)."""
 
-    params: dict[str, object] | None = None
-
-    def __post_init__(self) -> None:
-        if self.params is None:
-            self.params = {}
+    params: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass

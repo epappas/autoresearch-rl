@@ -18,6 +18,7 @@ from autoresearch_rl.controller.shutdown import ShutdownHandler
 from autoresearch_rl.controller.types import LoopResult
 from autoresearch_rl.forecasting import should_early_stop
 from autoresearch_rl.policy.learned_search import LearnedParamPolicy, LearnedSearchConfig
+from autoresearch_rl.policy.llm_search import LLMParamPolicy
 from autoresearch_rl.policy.search import GridPolicy, ParamPolicy, RandomPolicy, StaticPolicy
 from autoresearch_rl.promotion import PromotionTracker
 from autoresearch_rl.target.interface import RunOutcome, TargetAdapter
@@ -40,13 +41,24 @@ def _score(value: float, objective: ObjectiveConfig) -> float:
     return value if objective.direction == "min" else -value
 
 
-def _policy_from_config(policy_cfg) -> ParamPolicy:
+def _policy_from_config(policy_cfg, objective: ObjectiveConfig | None = None) -> ParamPolicy:
     if policy_cfg.type == "grid":
         return GridPolicy(policy_cfg.params)
     if policy_cfg.type == "random":
         return RandomPolicy(policy_cfg.params, seed=policy_cfg.seed)
     if policy_cfg.type == "learned":
         return LearnedParamPolicy(policy_cfg.params, LearnedSearchConfig())
+    if policy_cfg.type == "llm":
+        return LLMParamPolicy(
+            policy_cfg.params,
+            api_url=policy_cfg.llm_api_url,
+            model=policy_cfg.llm_model,
+            api_key_env=policy_cfg.llm_api_key_env,
+            timeout_s=policy_cfg.llm_timeout_s,
+            metric=objective.metric if objective else "val_bpb",
+            direction=objective.direction if objective else "min",
+            seed=policy_cfg.seed,
+        )
     return StaticPolicy()
 
 
@@ -92,7 +104,7 @@ def run_continuous(
     start_ts = time.monotonic()
     elapsed_offset = 0.0
 
-    policy = _policy_from_config(policy_cfg)
+    policy = _policy_from_config(policy_cfg, objective)
 
     if controller.checkpoint_path:
         ckpt = load_checkpoint(controller.checkpoint_path)

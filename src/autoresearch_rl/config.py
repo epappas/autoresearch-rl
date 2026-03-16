@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ObjectiveConfig(BaseModel):
@@ -34,9 +34,22 @@ class TargetConfig(BaseModel):
 
 
 class PolicyConfig(BaseModel):
-    type: Literal["grid", "random", "static", "learned"] = "static"
+    type: Literal["grid", "random", "static", "learned", "llm"] = "static"
     params: dict[str, list[float] | list[int] | list[str] | list[bool]] = Field(default_factory=dict)
     seed: int = 7
+    llm_api_url: str | None = None
+    llm_model: str | None = None
+    llm_api_key_env: str = "OPENAI_API_KEY"
+    llm_timeout_s: int = 30
+
+    @model_validator(mode="after")
+    def _validate_llm_fields(self) -> "PolicyConfig":
+        if self.type == "llm":
+            if not self.llm_api_url:
+                raise ValueError("llm_api_url is required when policy type is 'llm'")
+            if not self.llm_model:
+                raise ValueError("llm_model is required when policy type is 'llm'")
+        return self
 
 
 class ComparabilityConfig(BaseModel):
