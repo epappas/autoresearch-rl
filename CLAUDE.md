@@ -8,6 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install (requires Python >= 3.10, uv is the primary tool)
 uv sync --extra dev
 
+# Optional: Basilica GPU cloud support
+uv sync --extra basilica
+
 # Run tests
 uv run pytest -q                          # all tests
 uv run pytest tests/test_contract.py -q   # single test file
@@ -34,11 +37,15 @@ Two independent loop systems coexist in the codebase:
 ### 1. Continuous CLI loop (primary, actively used)
 Runtime path: `cli.py` -> `controller/continuous.py` -> `target/*` -> `telemetry/*`
 
-- **Targets** (`target/`): Pluggable adapters implementing `TargetAdapter` protocol (run + eval). Two types:
+- **Targets** (`target/`): Pluggable adapters implementing `TargetAdapter` protocol (run + eval). Three types:
   - `CommandTarget`: runs local/Docker commands, injects params via `AR_PARAMS_JSON` and `AR_PARAM_<NAME>` env vars
   - `HttpTarget`: calls remote endpoints (vLLM/sglang)
+  - `BasilicaTarget` (`target/basilica.py`): deploys each training iteration as a containerized GPU job on Basilica cloud; handles health-check bootstrapping, log polling, and cleanup
   - Registry in `target/registry.py` builds the correct adapter from config
-- **Policy** (`policy/search.py`): Parameter proposal strategies (`GridPolicy`, `RandomPolicy`, `StaticPolicy`) that cycle through hyperparameter combinations
+- **Policy**: Parameter proposal strategies. Five types across two modules:
+  - `policy/search.py`: `GridPolicy` (exhaustive combos), `RandomPolicy` (seeded uniform), `StaticPolicy` (no overrides)
+  - `policy/llm_search.py`: `LLMParamPolicy` calls any OpenAI-compatible chat API to propose params from full experiment history; falls back to seeded random on failure; zero extra dependencies (stdlib `urllib`)
+  - `policy/learned.py` + `policy/learned_search.py`: learned policy using PPO-style updates
 - **Controller** (`controller/continuous.py`): Orchestrates the loop with stop guards (wall time, no-improvement streak, failure rate). Each iteration: propose params -> train -> eval -> keep/discard -> emit telemetry
 - **Config** (`config.py`): Pydantic models for all config sections. YAML config validated via `RunConfig.model_validate()`
 
