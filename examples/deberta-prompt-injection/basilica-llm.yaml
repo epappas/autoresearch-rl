@@ -1,4 +1,4 @@
-name: deberta-prompt-injection-basilica
+name: deberta-prompt-injection-basilica-llm
 
 objective:
   metric: val_bpb
@@ -33,17 +33,21 @@ target:
       urllib.request.urlretrieve('https://raw.githubusercontent.com/epappas/autoresearch-rl/main/examples/deberta-prompt-injection/data/val.jsonl', '/app/data/val.jsonl')"
 
 policy:
-  type: grid
+  type: llm
   params:
     learning_rate: [0.00001, 0.00002, 0.00003]
     epochs: [1, 2, 3]
     weight_decay: [0.0, 0.01, 0.1]
     batch_size: [4, 8]
     grad_clip: [0.5, 1.0]
+  llm_api_url: "https://llm.chutes.ai/v1"
+  llm_model: "MiniMaxAI/MiniMax-M2.5-TEE"
+  llm_api_key_env: "CHUTES_API_KEY"
+  llm_timeout_s: 30
 
 controller:
   max_wall_time_s: 7200
-  no_improve_limit: 4
+  no_improve_limit: 6
   failure_rate_limit: 0.8
   failure_window: 6
 
@@ -53,7 +57,7 @@ comparability:
   strict: false
 
 telemetry:
-  trace_path: traces/deberta-basilica/events.jsonl
-  ledger_path: artifacts/deberta-basilica/results.tsv
-  artifacts_dir: artifacts/deberta-basilica/runs
-  versions_dir: artifacts/deberta-basilica/versions
+  trace_path: traces/deberta-basilica-llm/events.jsonl
+  ledger_path: artifacts/deberta-basilica-llm/results.tsv
+  artifacts_dir: artifacts/deberta-basilica-llm/runs
+  versions_dir: artifacts/deberta-basilica-llm/versions
