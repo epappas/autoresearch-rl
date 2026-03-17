@@ -37,5 +37,11 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests that hit external services (deselect with '-m \"not integration\"')",
+    "basilica: marks tests that require Basilica GPU cloud credentials",
+]
+
 [tool.ruff]
 line-length = 100
