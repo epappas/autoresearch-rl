@@ -20,14 +20,11 @@ uv run pytest -k test_name -q             # single test by name
 uv run ruff check src/ tests/
 uv run mypy src/
 
-# Verification matrix (runs in CI alongside pytest)
-chmod +x scripts/verify_matrix.sh && uv run bash scripts/verify_matrix.sh
-
 # Run the CLI
-uv run autoresearch-rl --config configs/example.yaml
-uv run autoresearch-rl validate --config configs/example.yaml
-uv run autoresearch-rl print-config --config configs/example.yaml
-uv run autoresearch-rl --config configs/example.yaml --override controller.max_wall_time_s=10
+uv run autoresearch-rl --config examples/minimal-trainable-target/config.yaml
+uv run autoresearch-rl validate --config examples/minimal-trainable-target/config.yaml
+uv run autoresearch-rl print-config --config examples/minimal-trainable-target/config.yaml
+uv run autoresearch-rl --config examples/minimal-trainable-target/config.yaml --override controller.max_wall_time_s=10
 ```
 
 ## Architecture

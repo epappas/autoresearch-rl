@@ -1,48 +1,48 @@
 # Examples
 
-This folder contains ready-to-run examples for the **continuous CLI**.
+Ready-to-run examples for the **continuous CLI**. Each example follows a standard layout:
+
+| File | Purpose |
+|------|---------|
+| `config.yaml` | Single YAML config |
+| `run.sh` | Local entrypoint (calls `uv run autoresearch-rl`) |
+| `deploy.py` | Basilica cloud deployment (build, push, run) |
+| `Dockerfile` | Container image for Basilica |
+| `train.py` | Training script |
+| `program.md` | LLM agent instructions (if applicable) |
+| `README.md` | Documentation |
+
+Policy and target variations are handled via `--override` flags.
 
 ## Minimal trainable target
+Deterministic toy target, no GPU, completes in seconds.
 ```bash
-uv run autoresearch-rl --config configs/example.yaml
+bash examples/minimal-trainable-target/run.sh
 ```
 
 ## Autoresearch-like
+Time-bounded deterministic training loop.
 ```bash
-uv run autoresearch-rl --config examples/autoresearch-like/example.yaml
+bash examples/autoresearch-like/run.sh
 ```
 
 ## Basilica GRPO
+Qwen2.5-0.5B GRPO fine-tuning on GSM8K via Basilica GPU cloud.
 ```bash
-export BASILICA_API_TOKEN="your-basilica-token"
-export HF_TOKEN="your-huggingface-token"
-uv run autoresearch-rl --config examples/basilica-grpo/example.yaml
+export BASILICA_API_TOKEN="your-token"
+bash examples/basilica-grpo/run.sh
 ```
 
 ## DeBERTa prompt injection
-
-### Local (grid search)
+DeBERTa classifier for prompt-injection detection. Supports LLM-guided and grid search, local and Basilica.
 ```bash
-pip install -r examples/deberta-prompt-injection/requirements.txt
-uv run autoresearch-rl --config examples/deberta-prompt-injection/example.yaml
-```
+# Local (default: LLM-guided)
+bash examples/deberta-prompt-injection/run.sh
 
-### Local (LLM-guided search)
-```bash
-pip install -r examples/deberta-prompt-injection/requirements.txt
-export CHUTES_API_KEY="your-key"
-uv run autoresearch-rl --config examples/deberta-prompt-injection/example-llm.yaml
-```
+# Local with grid search
+bash examples/deberta-prompt-injection/run.sh --override policy.type=grid
 
-### Basilica (grid search)
-```bash
-export BASILICA_API_TOKEN="your-basilica-token"
-uv run autoresearch-rl --config examples/deberta-prompt-injection/basilica.yaml
-```
-
-### Basilica (LLM-guided search)
-```bash
-export BASILICA_API_TOKEN="your-basilica-token"
-export CHUTES_API_KEY="your-key"
-uv run autoresearch-rl --config examples/deberta-prompt-injection/basilica-llm.yaml
+# Basilica cloud
+export BASILICA_API_TOKEN="your-token"
+python3 examples/deberta-prompt-injection/deploy.py
 ```

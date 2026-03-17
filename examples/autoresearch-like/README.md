@@ -2,9 +2,18 @@
 
 This example runs via the **continuous CLI** using a command target.
 
-## Run
+## Run (local)
 ```bash
-uv run autoresearch-rl --config examples/autoresearch-like/example.yaml
+bash examples/autoresearch-like/run.sh
+```
+
+## Deploy (Basilica)
+```bash
+export BASILICA_API_TOKEN="your-token"
+python3 examples/autoresearch-like/deploy.py
+
+# With custom Docker image
+python3 examples/autoresearch-like/deploy.py --image-tag your-registry/autoresearch:latest
 ```
 
 ## How it works

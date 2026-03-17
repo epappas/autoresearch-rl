@@ -26,14 +26,17 @@ uv sync --extra basilica
 
 ## Quickstart
 ```bash
-# Local run with grid search
-autoresearch-rl --config examples/deberta-prompt-injection/example.yaml
+# Minimal example (deterministic, no GPU)
+bash examples/minimal-trainable-target/run.sh
 
-# Local run with LLM-guided search (requires API key)
-CHUTES_API_KEY="..." autoresearch-rl --config examples/deberta-prompt-injection/example-llm.yaml
+# DeBERTa with LLM-guided search (requires API key)
+CHUTES_API_KEY="..." bash examples/deberta-prompt-injection/run.sh
 
-# Basilica GPU cloud with LLM-guided search
-CHUTES_API_KEY="..." autoresearch-rl --config examples/deberta-prompt-injection/basilica-llm.yaml
+# DeBERTa with grid search
+bash examples/deberta-prompt-injection/run.sh --override policy.type=grid
+
+# Deploy to Basilica GPU cloud
+BASILICA_API_TOKEN="..." python3 examples/basilica-grpo/deploy.py
 ```
 
 ## Targets
@@ -131,22 +134,19 @@ Each iteration emits:
 
 ## Examples
 
-### DeBERTa prompt-injection classifier
-Fine-tunes `protectai/deberta-v3-base-prompt-injection-v2` on a small binary classification dataset. Four config variants:
+| Example | Target | Policy | Description |
+|---------|--------|--------|-------------|
+| [minimal-trainable-target](examples/minimal-trainable-target/) | local/Basilica | grid | Deterministic toy, no GPU |
+| [autoresearch-like](examples/autoresearch-like/) | local/Basilica | grid | Time-bounded training loop |
+| [basilica-grpo](examples/basilica-grpo/) | Basilica GPU | grid | Qwen2.5 GRPO on GSM8K |
+| [deberta-prompt-injection](examples/deberta-prompt-injection/) | local/Basilica | llm/grid | DeBERTa classifier |
 
-| Config | Target | Policy | Search space |
-|--------|--------|--------|--------------|
-| `example.yaml` | local | grid | 108 combos |
-| `example-llm.yaml` | local | llm (Chutes) | 108 combos |
-| `basilica.yaml` | Basilica GPU | grid | 108 combos |
-| `basilica-llm.yaml` | Basilica GPU | llm (Chutes) | 108 combos |
-
-See `examples/deberta-prompt-injection/` for configs and training script.
+Each example includes `run.sh` (local), `deploy.py` (Basilica), `Dockerfile`, and `config.yaml`. See `examples/README.md` for details.
 
 ## CLI helpers
 
 ```bash
-autoresearch-rl validate --config configs/example.yaml
-autoresearch-rl print-config --config configs/example.yaml
-autoresearch-rl --config configs/example.yaml --override controller.max_wall_time_s=10
+autoresearch-rl validate --config examples/minimal-trainable-target/config.yaml
+autoresearch-rl print-config --config examples/minimal-trainable-target/config.yaml
+autoresearch-rl --config examples/minimal-trainable-target/config.yaml --override controller.max_wall_time_s=10
 ```
