@@ -2,9 +2,18 @@
 
 A tiny deterministic target project for the **continuous CLI**.
 
-## Run (continuous CLI)
+## Run (local)
 ```bash
-uv run autoresearch-rl --config configs/example.yaml
+bash examples/minimal-trainable-target/run.sh
+```
+
+## Deploy (Basilica)
+```bash
+export BASILICA_API_TOKEN="your-token"
+python3 examples/minimal-trainable-target/deploy.py
+
+# With custom Docker image
+python3 examples/minimal-trainable-target/deploy.py --image-tag your-registry/minimal:latest
 ```
 
 ## Run manually

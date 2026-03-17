@@ -1,40 +1,36 @@
-# deberta-prompt-injection (continuous CLI)
+# deberta-prompt-injection
 
-Fine-tune DeBERTa for prompt-injection classification. Four config variants are provided.
+Fine-tune DeBERTa for prompt-injection classification.
 
-## Configs
+## Prerequisites
 
-| File | Target | Policy |
-|------|--------|--------|
-| `example.yaml` | local command | grid |
-| `example-llm.yaml` | local command | LLM-guided |
-| `basilica.yaml` | Basilica GPU | grid |
-| `basilica-llm.yaml` | Basilica GPU | LLM-guided |
+```bash
+pip install -r examples/deberta-prompt-injection/requirements.txt
+```
+
+## Run (local, LLM-guided -- default)
+
+```bash
+export CHUTES_API_KEY="your-key"
+bash examples/deberta-prompt-injection/run.sh
+```
 
 ## Run (local, grid search)
+
 ```bash
-pip install -r examples/deberta-prompt-injection/requirements.txt
-uv run autoresearch-rl --config examples/deberta-prompt-injection/example.yaml
+bash examples/deberta-prompt-injection/run.sh --override policy.type=grid
 ```
 
-## Run (local, LLM-guided)
-```bash
-pip install -r examples/deberta-prompt-injection/requirements.txt
-export CHUTES_API_KEY="your-key"
-uv run autoresearch-rl --config examples/deberta-prompt-injection/example-llm.yaml
-```
+## Deploy (Basilica)
 
-## Run (Basilica, grid search)
 ```bash
 export BASILICA_API_TOKEN="your-basilica-token"
-uv run autoresearch-rl --config examples/deberta-prompt-injection/basilica.yaml
-```
 
-## Run (Basilica, LLM-guided)
-```bash
-export BASILICA_API_TOKEN="your-basilica-token"
-export CHUTES_API_KEY="your-key"
-uv run autoresearch-rl --config examples/deberta-prompt-injection/basilica-llm.yaml
+# LLM-guided (default)
+python3 examples/deberta-prompt-injection/deploy.py
+
+# Grid search on Basilica
+python3 examples/deberta-prompt-injection/deploy.py --policy grid
 ```
 
 ## How it works
@@ -43,11 +39,17 @@ uv run autoresearch-rl --config examples/deberta-prompt-injection/basilica-llm.y
   - `AR_PARAM_<NAME>`
 - Script prints metrics including `val_bpb`.
 - `val_bpb = 1.0 - f1` (lower is better).
+- `program.md` provides task context to the LLM policy.
 
 ## What to expect
 - Local runs are slow (HF fine-tuning on CPU or small GPU).
-- Basilica variants use 1x A100/H100/L40S with `setup_cmd` to install deps and fetch files.
-- Artifacts written to `artifacts/deberta*/` and `traces/deberta*/`.
+- Basilica deploys use 1x A100/H100/L40S with `setup_cmd` to install deps and fetch files.
+- Artifacts written to `artifacts/deberta/` and `traces/deberta/`.
 
 ## Notes
-Update the relevant YAML for your hardware or dataset paths.
+Use `--override` to tweak parameters without editing the config:
+```bash
+bash examples/deberta-prompt-injection/run.sh \
+  --override controller.max_wall_time_s=3600 \
+  --override target.timeout_s=1800
+```

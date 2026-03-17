@@ -11,14 +11,18 @@ export HF_TOKEN="your-huggingface-token"
 pip install basilica-sdk
 ```
 
-## Quick Start
-
+## Run (local)
 ```bash
-# Via CLI
-uv run autoresearch-rl --config examples/basilica-grpo/example.yaml
+bash examples/basilica-grpo/run.sh
+```
 
-# Or via run script
-python3 examples/basilica-grpo/run.py
+## Deploy (Basilica)
+```bash
+export BASILICA_API_TOKEN="your-token"
+python3 examples/basilica-grpo/deploy.py
+
+# With custom Docker image
+python3 examples/basilica-grpo/deploy.py --image-tag your-registry/grpo:latest
 ```
 
 ## How It Works
