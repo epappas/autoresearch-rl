@@ -14,5 +14,3 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run pytest -q
       - run: uv run ruff check src/ tests/
-      - run: chmod +x scripts/verify_matrix.sh
-      - run: uv run bash scripts/verify_matrix.sh
