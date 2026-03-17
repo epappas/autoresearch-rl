@@ -5,7 +5,7 @@ import statistics
 import typer
 
 from autoresearch_rl.eval.metrics import parse_metrics
-from autoresearch_rl.policy.baselines import GreedyLLMPolicy, RandomPolicy
+from autoresearch_rl.policy.baselines import GreedyLLMPolicy, RandomDiffPolicy
 from autoresearch_rl.sandbox.runner import run_trial
 
 app = typer.Typer()
@@ -18,7 +18,7 @@ def _run(policy, iterations: int, timeout_s: int) -> dict:
     best = float("inf")
 
     for i in range(iterations):
-        diff = policy.propose_diff({"iter": i, "best_score": best if best < 999 else None})
+        diff = policy.propose({"iter": i, "best_score": best if best < 999 else None}).diff
         r = run_trial(
             diff=diff,
             timeout_s=timeout_s,
@@ -53,7 +53,7 @@ def _run(policy, iterations: int, timeout_s: int) -> dict:
 
 @app.command()
 def main(iterations: int = 5, timeout_s: int = 30) -> None:
-    rp = _run(RandomPolicy(), iterations=iterations, timeout_s=timeout_s)
+    rp = _run(RandomDiffPolicy(), iterations=iterations, timeout_s=timeout_s)
     gp = _run(GreedyLLMPolicy(), iterations=iterations, timeout_s=timeout_s)
     print({"random": rp, "greedy": gp})
 

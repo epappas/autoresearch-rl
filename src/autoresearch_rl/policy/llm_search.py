@@ -10,7 +10,6 @@ import urllib.request
 from typing import Any
 
 from autoresearch_rl.policy.interface import ParamProposal
-from autoresearch_rl.policy.search import ParamPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +27,13 @@ def _format_prompt(
     history: list[dict],
     metric: str,
     direction: str,
+    program: str = "",
 ) -> str:
     lines: list[str] = []
+    if program:
+        lines.append("Task specification:")
+        lines.append(program)
+        lines.append("")
     lines.append(f"Objective: {direction}imize '{metric}'")
     lines.append("")
     lines.append("Search space:")
@@ -168,7 +172,7 @@ def _random_fallback(
     return ParamProposal(params=params, rationale="llm-fallback-random")
 
 
-class LLMParamPolicy(ParamPolicy):
+class LLMParamPolicy:
     """Calls an OpenAI-compatible chat API to propose hyperparameters."""
 
     def __init__(
@@ -192,7 +196,9 @@ class LLMParamPolicy(ParamPolicy):
         self._direction = direction
         self._rng = random.Random(seed)
 
-    def next(self, *, history: list[dict]) -> ParamProposal:
+    def propose(self, state: dict) -> ParamProposal:
+        history: list[dict] = state.get("history", [])
+        program: str = state.get("program", "")
         api_key = os.environ.get(self._api_key_env)
         if not api_key:
             logger.warning("LLM policy: %s not set, falling back to random", self._api_key_env)
@@ -200,7 +206,7 @@ class LLMParamPolicy(ParamPolicy):
 
         try:
             user_prompt = _format_prompt(
-                self._space, history, self._metric, self._direction
+                self._space, history, self._metric, self._direction, program=program
             )
             raw = _call_chat_api(
                 self._api_url, self._model, api_key,

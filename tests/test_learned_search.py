@@ -60,7 +60,7 @@ def test_state_feature_extraction_values() -> None:
 
 def test_policy_returns_valid_proposal() -> None:
     policy = LearnedParamPolicy(_param_space())
-    proposal = policy.next(history=_sample_history())
+    proposal = policy.propose({"history": _sample_history()})
     assert isinstance(proposal, ParamProposal)
     assert "lr" in proposal.params
     assert "batch_size" in proposal.params
@@ -74,7 +74,7 @@ def test_record_reward_stores_transitions() -> None:
         _param_space(),
         LearnedSearchConfig(update_every=100),
     )
-    policy.next(history=_sample_history())
+    policy.propose({"history": _sample_history()})
     assert policy._pending is not None
     policy.record_reward(1.0)
     assert policy._pending is None
@@ -96,7 +96,7 @@ def test_ppo_update_triggers() -> None:
     policy = LearnedParamPolicy(_param_space(), cfg)
 
     for i in range(4):
-        policy.next(history=_sample_history(i))
+        policy.propose({"history": _sample_history(i)})
         policy.record_reward(1.0 if i % 2 == 0 else -0.1)
 
     assert policy.buffer_size == 0
