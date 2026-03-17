@@ -6,14 +6,21 @@ objective:
 
 target:
   type: command
-  workdir: .
+  workdir: examples/minimal-trainable-target
   timeout_s: 3600
   train_cmd:
     - python3
-    - examples/minimal-trainable-target/train.py
+    - train.py
   eval_cmd:
     - python3
-    - examples/minimal-trainable-target/train.py
+    - train.py
+  basilica:
+    image: python:3.11-slim
+    gpu_count: 1
+    gpu_models: ["A100", "H100"]
+    memory: "8Gi"
+    cpu: "4"
+    ttl_seconds: 300
 
 policy:
   type: grid

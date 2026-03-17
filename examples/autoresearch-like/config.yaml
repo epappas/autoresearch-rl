@@ -14,6 +14,13 @@ target:
   eval_cmd:
     - python3
     - train.py
+  basilica:
+    image: python:3.11-slim
+    gpu_count: 1
+    gpu_models: ["A100", "H100"]
+    memory: "8Gi"
+    cpu: "4"
+    ttl_seconds: 300
 
 policy:
   type: grid
