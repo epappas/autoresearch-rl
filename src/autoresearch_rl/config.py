@@ -34,21 +34,43 @@ class TargetConfig(BaseModel):
 
 
 class PolicyConfig(BaseModel):
-    type: Literal["grid", "random", "static", "learned", "llm"] = "static"
-    params: dict[str, list[float] | list[int] | list[str] | list[bool]] = Field(default_factory=dict)
+    type: Literal[
+        "grid", "random", "static", "learned", "llm", "llm_diff", "hybrid"
+    ] = "static"
+    params: dict[str, list[float] | list[int] | list[str] | list[bool]] = Field(
+        default_factory=dict
+    )
     seed: int = 7
     llm_api_url: str | None = None
     llm_model: str | None = None
     llm_api_key_env: str = "OPENAI_API_KEY"
     llm_timeout_s: int = 30
+    # Diff mode fields
+    mutable_file: str | None = None
+    frozen_file: str | None = None
+    program_file: str | None = None
+    contract_strict: bool = True
+    # Hybrid mode fields
+    hybrid_param_explore_iters: int = 5
+    hybrid_stall_threshold: int = 3
+    hybrid_diff_failure_limit: int = 3
 
     @model_validator(mode="after")
     def _validate_llm_fields(self) -> "PolicyConfig":
-        if self.type == "llm":
+        if self.type in ("llm", "llm_diff", "hybrid"):
             if not self.llm_api_url:
-                raise ValueError("llm_api_url is required when policy type is 'llm'")
+                raise ValueError(
+                    f"llm_api_url is required when policy type is '{self.type}'"
+                )
             if not self.llm_model:
-                raise ValueError("llm_model is required when policy type is 'llm'")
+                raise ValueError(
+                    f"llm_model is required when policy type is '{self.type}'"
+                )
+        if self.type in ("llm_diff", "hybrid"):
+            if not self.mutable_file:
+                raise ValueError(
+                    f"mutable_file is required when policy type is '{self.type}'"
+                )
         return self
 
 
@@ -62,6 +84,7 @@ class ComparabilityConfig(BaseModel):
 class ControllerConfig(BaseModel):
     seed: int | None = None
     max_wall_time_s: int | None = None
+    max_iterations: int | None = None
     no_improve_limit: int | None = None
     failure_rate_limit: float | None = None
     failure_window: int = 10
