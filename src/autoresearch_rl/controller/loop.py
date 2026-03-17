@@ -111,7 +111,7 @@ def run_loop(
     ledger_path: str = "results.tsv",
     mutable_file: str = "train.py",
     frozen_file: str = "prepare.py",
-    program_path: str = "programs/default.md",
+    program_path: str = "program.md",
     contract_strict: bool = True,
     trial_timeout_s: int = 30,
     distill_path: str = "artifacts/distill/samples.jsonl",
@@ -129,6 +129,7 @@ def run_loop(
 ) -> LoopResult:
     episode_id = new_run_id()
     base_policy = GreedyLLMPolicy()
+    proposal_policy: GreedyLLMPolicy | LearnedDiffPolicy
     if policy_type == "learned":
         proposal_policy = LearnedDiffPolicy(base_policy=base_policy, weights_path=learned_weights_path)
     else:
@@ -146,6 +147,11 @@ def run_loop(
     files_ok, files_reason = validate_contract_files_exist(runtime_contract, root=workdir)
     if runtime_contract.strict and not files_ok:
         raise ValueError(f"Contract validation failed: {files_reason}")
+
+    program = ""
+    program_file = Path(workdir) / Path(program_path).name
+    if program_file.exists():
+        program = program_file.read_text(encoding="utf-8")
 
     mutable_basename = Path(mutable_file).name
     effective_trial_command = trial_command or [sys.executable, mutable_basename]
@@ -182,9 +188,10 @@ def run_loop(
             "history": history[-32:],
             "mutable_file": mutable_file,
             "workdir": workdir,
+            "program": program,
         }
 
-        diff = proposal_policy.propose_diff(state)
+        diff = proposal_policy.propose(state).diff
         logp = proposal_policy.logp(diff) if hasattr(proposal_policy, "logp") else 0.0
         emit(trace_path, {"type": "proposal_created", "episode_id": episode_id, "iter": iter_count, "diff_len": len(diff)}, run_id=episode_id)
 
@@ -307,7 +314,7 @@ def run_loop(
 
             reward = float(best - score) if best < float("inf") else 0.0
             sample_buffer.append({"diff": previous["diff"], "reward": reward, "logp": previous.get("logp", 0.0)})
-            if policy_type == "learned" and len(sample_buffer) >= learned_update_every:
+            if isinstance(proposal_policy, LearnedDiffPolicy) and len(sample_buffer) >= learned_update_every:
                 proposal_policy.update(sample_buffer)
                 sample_buffer.clear()
 

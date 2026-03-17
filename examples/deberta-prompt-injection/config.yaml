@@ -1,21 +1,33 @@
-name: deberta-prompt-injection-basilica-llm
+name: deberta-prompt-injection
+
+program_path: examples/deberta-prompt-injection/program.md
 
 objective:
   metric: val_bpb
   direction: min
 
 target:
-  type: basilica
+  type: command
+  workdir: examples/deberta-prompt-injection
+  timeout_s: 600
   train_cmd:
     - python3
-    - /app/train.py
+    - train.py
     - --train-file
-    - /app/data/train.jsonl
+    - data/train.jsonl
     - --val-file
-    - /app/data/val.jsonl
+    - data/val.jsonl
     - --output-dir
     - /tmp/deberta-out
-  timeout_s: 900
+  eval_cmd:
+    - python3
+    - train.py
+    - --train-file
+    - data/train.jsonl
+    - --val-file
+    - data/val.jsonl
+    - --output-dir
+    - /tmp/deberta-out
   basilica:
     image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
     gpu_count: 1
@@ -46,18 +58,19 @@ policy:
   llm_timeout_s: 30
 
 controller:
-  max_wall_time_s: 7200
-  no_improve_limit: 6
+  max_wall_time_s: 600
+  no_improve_limit: 3
   failure_rate_limit: 0.8
-  failure_window: 6
+  failure_window: 5
 
 comparability:
   budget_mode: fixed_wallclock
-  expected_budget_s: 900
+  expected_budget_s: 600
+  expected_hardware_fingerprint: null
   strict: false
 
 telemetry:
-  trace_path: traces/deberta-basilica-llm/events.jsonl
-  ledger_path: artifacts/deberta-basilica-llm/results.tsv
-  artifacts_dir: artifacts/deberta-basilica-llm/runs
-  versions_dir: artifacts/deberta-basilica-llm/versions
+  trace_path: traces/deberta/events.jsonl
+  ledger_path: artifacts/deberta/results.tsv
+  artifacts_dir: artifacts/deberta/runs
+  versions_dir: artifacts/deberta/versions
