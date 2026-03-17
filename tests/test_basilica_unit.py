@@ -1,0 +1,190 @@
+"""Unit tests for BasilicaTarget helpers -- no cloud, no cost."""
+from __future__ import annotations
+
+import json
+
+from autoresearch_rl.target.basilica import BasilicaTarget
+
+
+class TestParseMetrics:
+    """Test _parse_metrics static method."""
+
+    def test_extracts_key_value_pairs(self) -> None:
+        logs = "loss=0.432100\nval_bpb=0.150000\nf1=0.850000\naccuracy=0.875000"
+        metrics = BasilicaTarget._parse_metrics(logs)
+        assert abs(metrics["loss"] - 0.4321) < 1e-6
+        assert abs(metrics["val_bpb"] - 0.15) < 1e-6
+        assert abs(metrics["f1"] - 0.85) < 1e-6
+        assert abs(metrics["accuracy"] - 0.875) < 1e-6
+
+    def test_handles_scientific_notation(self) -> None:
+        logs = "lr=2e-5\nloss=1.23e+02"
+        metrics = BasilicaTarget._parse_metrics(logs)
+        assert abs(metrics["lr"] - 2e-5) < 1e-10
+        assert abs(metrics["loss"] - 123.0) < 1e-6
+
+    def test_empty_logs_returns_empty(self) -> None:
+        assert BasilicaTarget._parse_metrics("") == {}
+
+    def test_no_metrics_in_text(self) -> None:
+        assert BasilicaTarget._parse_metrics("Starting training...\nDone.") == {}
+
+    def test_ignores_invalid_float_values(self) -> None:
+        logs = "loss=0.5\nbad=not_a_float"
+        metrics = BasilicaTarget._parse_metrics(logs)
+        assert "loss" in metrics
+        assert "bad" not in metrics
+
+    def test_mixed_text_and_metrics(self) -> None:
+        logs = (
+            "Epoch 1/3\n"
+            "Step 10: loss=0.6543\n"
+            "Evaluation results:\n"
+            "val_bpb=0.234000 f1=0.766000\n"
+        )
+        metrics = BasilicaTarget._parse_metrics(logs)
+        assert "loss" in metrics
+        assert "val_bpb" in metrics
+        assert "f1" in metrics
+
+    def test_keys_lowercased(self) -> None:
+        logs = "LOSS=0.5\nVal_BPB=0.2"
+        metrics = BasilicaTarget._parse_metrics(logs)
+        assert "loss" in metrics
+        assert "val_bpb" in metrics
+
+    def test_negative_values(self) -> None:
+        logs = "delta=-0.05"
+        metrics = BasilicaTarget._parse_metrics(logs)
+        assert abs(metrics["delta"] - (-0.05)) < 1e-6
+
+
+class TestExtractMessages:
+    """Test _extract_messages static method for SSE JSON log parsing."""
+
+    def test_plain_text_passthrough(self) -> None:
+        raw = "Hello world\nTraining started"
+        result = BasilicaTarget._extract_messages(raw)
+        assert "Hello world" in result
+        assert "Training started" in result
+
+    def test_sse_json_extraction(self) -> None:
+        lines = [
+            'data: {"message": "Starting epoch 1"}',
+            'data: {"message": "loss=0.5432"}',
+        ]
+        raw = "\n".join(lines)
+        result = BasilicaTarget._extract_messages(raw)
+        assert "Starting epoch 1" in result
+        assert "loss=0.5432" in result
+
+    def test_empty_messages_skipped(self) -> None:
+        raw = 'data: {"message": ""}\ndata: {"message": "real log"}'
+        result = BasilicaTarget._extract_messages(raw)
+        assert result == "real log"
+
+    def test_malformed_json_kept_as_text(self) -> None:
+        raw = "data: {broken json\nnormal text"
+        result = BasilicaTarget._extract_messages(raw)
+        assert "{broken json" in result
+        assert "normal text" in result
+
+    def test_empty_input(self) -> None:
+        assert BasilicaTarget._extract_messages("") == ""
+
+    def test_blank_lines_skipped(self) -> None:
+        raw = "line1\n\n\nline2"
+        result = BasilicaTarget._extract_messages(raw)
+        assert result == "line1\nline2"
+
+    def test_mixed_sse_and_plain(self) -> None:
+        raw = (
+            "plain log line\n"
+            'data: {"message": "from sse"}\n'
+            "another plain line\n"
+        )
+        result = BasilicaTarget._extract_messages(raw)
+        assert "plain log line" in result
+        assert "from sse" in result
+        assert "another plain line" in result
+
+    def test_json_without_message_key(self) -> None:
+        raw = 'data: {"level": "info", "text": "something"}'
+        result = BasilicaTarget._extract_messages(raw)
+        # No "message" key, so empty message is skipped; the raw json line
+        # should not appear since it was valid json with no message.
+        assert result == ""
+
+    def test_realistic_basilica_logs(self) -> None:
+        entries = [
+            {"message": "Container started"},
+            {"message": "pip install complete"},
+            {"message": "Epoch 1/1"},
+            {"message": "loss=0.432100"},
+            {"message": "val_bpb=0.150000"},
+            {"message": "f1=0.850000"},
+        ]
+        raw = "\n".join(f"data: {json.dumps(e)}" for e in entries)
+        result = BasilicaTarget._extract_messages(raw)
+        assert "loss=0.432100" in result
+        assert "val_bpb=0.150000" in result
+
+
+class TestBuildBootstrapCmd:
+    """Test _build_bootstrap_cmd static method."""
+
+    def test_basic_command_without_setup(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(["python3", "train.py"])
+        assert "python3" in script
+        assert "train.py" in script
+        assert "HTTPServer" in script
+        assert "subprocess.call" in script
+
+    def test_setup_cmd_injected(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(
+            ["python3", "train.py"],
+            setup_cmd="pip install torch",
+        )
+        assert "pip install torch" in script
+        assert "check_call" in script
+
+    def test_no_setup_cmd(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(
+            ["python3", "train.py"],
+            setup_cmd=None,
+        )
+        assert "check_call" not in script
+
+    def test_health_port_injected(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(["echo", "hi"])
+        assert "8080" in script
+
+    def test_script_is_valid_python(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(
+            ["python3", "train.py"],
+            setup_cmd="pip install foo",
+        )
+        # Verify it compiles without syntax errors
+        compile(script, "<bootstrap>", "exec")
+
+    def test_script_without_setup_is_valid_python(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(["python3", "train.py"])
+        compile(script, "<bootstrap>", "exec")
+
+    def test_complex_setup_cmd(self) -> None:
+        setup = (
+            "pip install -q transformers datasets "
+            "&& mkdir -p /app/data "
+            "&& echo done"
+        )
+        script = BasilicaTarget._build_bootstrap_cmd(
+            ["python3", "/app/train.py"],
+            setup_cmd=setup,
+        )
+        compile(script, "<bootstrap>", "exec")
+        assert "transformers" in script
+
+    def test_user_cmd_preserved_exactly(self) -> None:
+        cmd = ["python3", "train.py", "--epochs", "3", "--lr", "1e-5"]
+        script = BasilicaTarget._build_bootstrap_cmd(cmd)
+        assert repr(cmd) in script

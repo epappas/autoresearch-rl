@@ -43,6 +43,15 @@ threading.Thread(
     daemon=True,
 ).start()
 
+# Diff mode: decode and write modified source if AR_MODIFIED_SOURCE is set
+import os as _os, base64 as _b64
+_src = _os.environ.get("AR_MODIFIED_SOURCE", "")
+if _src:
+    _tgt = _os.environ.get("AR_MODIFIED_TARGET", "train.py")
+    with open(_tgt, "w") as _f:
+        _f.write(_b64.b64decode(_src).decode("utf-8"))
+    print(f"[ar] wrote modified source to {{_tgt}} ({{len(_src)}} b64 chars)")
+
 rc = subprocess.call({cmd}, env=dict(**__import__("os").environ))
 sys.stdout.flush()
 sys.stderr.flush()
@@ -88,9 +97,10 @@ class BasilicaTarget:
             cmd=self._cfg.eval_cmd, phase="eval",
         )
 
-    def _build_bootstrap_cmd(self, user_cmd: list[str]) -> str:
+    @staticmethod
+    def _build_bootstrap_cmd(user_cmd: list[str], setup_cmd: str | None = None) -> str:
         """Wrap user command in bootstrap that starts health server."""
-        setup = self._bcfg.setup_cmd
+        setup = setup_cmd
         setup_block = ""
         if setup:
             setup_block = (
@@ -128,12 +138,17 @@ class BasilicaTarget:
         for k, v in params.items():
             env[f"AR_PARAM_{str(k).upper()}"] = str(v)
 
+        # Diff mode: pass modified source directly as env vars
+        for diff_key in ("AR_MODIFIED_SOURCE", "AR_MODIFIED_TARGET"):
+            if diff_key in params:
+                env[diff_key] = str(params[diff_key])
+
         hf_token = os.environ.get("HF_TOKEN", "")
         if hf_token:
             env["HF_TOKEN"] = hf_token
 
         user_cmd = cmd or ["python3", "train.py"]
-        bootstrap = self._build_bootstrap_cmd(user_cmd)
+        bootstrap = self._build_bootstrap_cmd(user_cmd, setup_cmd=self._bcfg.setup_cmd)
 
         health_check = HealthCheckConfig(
             liveness=ProbeConfig(
@@ -307,7 +322,8 @@ class BasilicaTarget:
             stderr=reason, elapsed_s=elapsed_s, run_dir=run_dir,
         )
 
-    def _extract_messages(self, raw_logs: str) -> str:
+    @staticmethod
+    def _extract_messages(raw_logs: str) -> str:
         """Extract message text from Basilica SSE JSON log lines."""
         lines: list[str] = []
         for line in raw_logs.splitlines():
@@ -338,7 +354,8 @@ class BasilicaTarget:
         except Exception as exc:
             logger.warning("Cleanup failed for %s: %s", name, exc)
 
-    def _parse_metrics(self, logs: str) -> dict[str, float]:
+    @staticmethod
+    def _parse_metrics(logs: str) -> dict[str, float]:
         """Extract key=value metrics from log text."""
         metrics: dict[str, float] = {}
         for match in re.finditer(r"(\w+)=([\d.eE+-]+)", logs):
