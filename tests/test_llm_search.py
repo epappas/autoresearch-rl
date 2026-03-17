@@ -21,6 +21,22 @@ SPACE = {"learning_rate": [0.00001, 0.00002, 0.00003], "epochs": [1, 2, 3]}
 # --- _format_prompt ---
 
 
+def test_format_prompt_with_program():
+    prompt = _format_prompt(SPACE, [], "val_bpb", "min", program="Train a small LM on wikitext.")
+    assert prompt.startswith("Task specification:")
+    assert "Train a small LM on wikitext." in prompt
+    assert "Objective:" in prompt
+    # program comes before objective
+    assert prompt.index("Task specification:") < prompt.index("Objective:")
+
+
+def test_format_prompt_empty_program_omits_section():
+    prompt = _format_prompt(SPACE, [], "val_bpb", "min", program="")
+    assert "Task specification:" not in prompt
+    prompt2 = _format_prompt(SPACE, [], "val_bpb", "min")
+    assert "Task specification:" not in prompt2
+
+
 def test_format_prompt_with_history():
     history = [
         {"params": {"learning_rate": 0.00001, "epochs": 1}, "metrics": {"val_bpb": 1.5}, "status": "ok"},
@@ -191,7 +207,7 @@ class TestLLMParamPolicyNext:
             as mock_urlopen,
         ):
             mock_urlopen.return_value = _mock_urlopen_response(response)
-            proposal = policy.next(history=[])
+            proposal = policy.propose({"history": []})
 
         assert proposal.params == {"learning_rate": 0.00002, "epochs": 2}
         assert proposal.rationale == "llm"
@@ -204,7 +220,7 @@ class TestLLMParamPolicyNext:
             as mock_urlopen,
         ):
             mock_urlopen.side_effect = Exception("API timeout")
-            proposal = policy.next(history=[])
+            proposal = policy.propose({"history": []})
 
         assert proposal.rationale == "llm-fallback-random"
         for k, v in proposal.params.items():
@@ -219,14 +235,14 @@ class TestLLMParamPolicyNext:
             as mock_urlopen,
         ):
             mock_urlopen.return_value = _mock_urlopen_response(response)
-            proposal = policy.next(history=[])
+            proposal = policy.propose({"history": []})
 
         assert proposal.rationale == "llm-fallback-random"
 
     def test_missing_api_key_falls_back(self):
         policy = self._make_policy()
         with patch.dict("os.environ", {}, clear=True):
-            proposal = policy.next(history=[])
+            proposal = policy.propose({"history": []})
 
         assert proposal.rationale == "llm-fallback-random"
 
@@ -239,7 +255,7 @@ class TestLLMParamPolicyNext:
             as mock_urlopen,
         ):
             mock_urlopen.return_value = _mock_urlopen_response(response)
-            policy.next(history=[])
+            policy.propose({"history": []})
 
             req = mock_urlopen.call_args[0][0]
             assert req.full_url == "http://localhost:8000/v1/chat/completions"
@@ -263,9 +279,42 @@ class TestLLMParamPolicyNext:
             as mock_urlopen,
         ):
             mock_urlopen.return_value = _mock_urlopen_response(response)
-            proposal = policy.next(history=history)
+            proposal = policy.propose({"history": history})
 
         assert proposal.params == {"learning_rate": 0.00003, "epochs": 3}
+
+    def test_program_flows_to_api_prompt(self):
+        policy = self._make_policy()
+        response = '{"learning_rate": 0.00002, "epochs": 2}'
+        with (
+            patch.dict("os.environ", {"TEST_LLM_KEY": "sk-test"}),
+            patch("autoresearch_rl.policy.llm_search.urllib.request.urlopen")
+            as mock_urlopen,
+        ):
+            mock_urlopen.return_value = _mock_urlopen_response(response)
+            policy.propose({"history": [], "program": "Minimize perplexity on wikitext."})
+
+            req = mock_urlopen.call_args[0][0]
+            body = json.loads(req.data)
+            user_msg = body["messages"][1]["content"]
+            assert "Task specification:" in user_msg
+            assert "Minimize perplexity on wikitext." in user_msg
+
+    def test_no_program_omits_section_in_api(self):
+        policy = self._make_policy()
+        response = '{"learning_rate": 0.00002, "epochs": 2}'
+        with (
+            patch.dict("os.environ", {"TEST_LLM_KEY": "sk-test"}),
+            patch("autoresearch_rl.policy.llm_search.urllib.request.urlopen")
+            as mock_urlopen,
+        ):
+            mock_urlopen.return_value = _mock_urlopen_response(response)
+            policy.propose({"history": []})
+
+            req = mock_urlopen.call_args[0][0]
+            body = json.loads(req.data)
+            user_msg = body["messages"][1]["content"]
+            assert "Task specification:" not in user_msg
 
     def test_fallback_randomness_advances(self):
         """Two consecutive fallbacks should return different params (most of the time)."""
@@ -273,7 +322,7 @@ class TestLLMParamPolicyNext:
         results = []
         with patch.dict("os.environ", {}, clear=True):
             for _ in range(10):
-                results.append(policy.next(history=[]).params)
+                results.append(policy.propose({"history": []}).params)
         # With 10 draws from a small space, we should see at least 2 distinct combos
         unique = {tuple(sorted(r.items())) for r in results}
         assert len(unique) >= 2

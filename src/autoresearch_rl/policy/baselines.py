@@ -4,8 +4,6 @@ import difflib
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
-
 from autoresearch_rl.policy.interface import DiffProposal
 
 
@@ -24,7 +22,7 @@ def _build_patch(path: Path, new_text: str) -> str:
     return udiff if udiff.strip() else f"diff --git a/{path.name} b/{path.name}\n"
 
 
-def _target_path(state: Mapping[str, object]) -> Path:
+def _target_path(state: dict) -> Path:
     workdir = str(state.get("workdir", "."))
     mutable = str(state.get("mutable_file", "train.py"))
     p = Path(mutable)
@@ -33,7 +31,7 @@ def _target_path(state: Mapping[str, object]) -> Path:
     return Path(workdir) / p.name
 
 
-def _recent_statuses(state: Mapping[str, object]) -> list[str]:
+def _recent_statuses(state: dict) -> list[str]:
     h = state.get("history", [])
     if not isinstance(h, list):
         return []
@@ -53,7 +51,7 @@ class RandomDiffPolicy:
     def __post_init__(self) -> None:
         self._rng = random.Random(self.seed)
 
-    def propose(self, state: Mapping[str, object]) -> DiffProposal:
+    def propose(self, state: dict) -> DiffProposal:
         path = _target_path(state)
         text = path.read_text(encoding="utf-8")
         lr = self._rng.choice(["0.0020", "0.0023", "0.0026", "0.0029"])
@@ -72,19 +70,11 @@ class RandomDiffPolicy:
             rationale="random_lr_choice",
         )
 
-    def propose_diff(self, state: Mapping[str, object]) -> str:
-        return self.propose(state).diff
-
-
-# Backward-compatible alias
-RandomPolicy = RandomDiffPolicy
-
-
 @dataclass
 class GreedyLLMPolicy:
     improve_threshold: float = 1.3
 
-    def propose(self, state: Mapping[str, object]) -> DiffProposal:
+    def propose(self, state: dict) -> DiffProposal:
         path = _target_path(state)
         text = path.read_text(encoding="utf-8")
 
@@ -129,5 +119,3 @@ class GreedyLLMPolicy:
             diff=_build_patch(path, new_text), rationale=rationale
         )
 
-    def propose_diff(self, state: Mapping[str, object]) -> str:
-        return self.propose(state).diff

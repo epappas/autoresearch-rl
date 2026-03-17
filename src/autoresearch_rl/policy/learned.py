@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from autoresearch_rl.policy.interface import DiffProposal
+from autoresearch_rl.policy.interface import DiffProposal, Policy
 from autoresearch_rl.sandbox.diff_utils import extract_touched_files_from_diff
 
 
@@ -32,9 +32,10 @@ def _softmax(scores: list[float]) -> list[float]:
 
 @dataclass
 class LearnedDiffPolicy:
-    base_policy: object
+    base_policy: Policy
     weights_path: str
     lr: float = 0.01
+    pool_size: int = 4
 
     def _load_weights(self) -> list[float]:
         p = Path(self.weights_path)
@@ -48,10 +49,11 @@ class LearnedDiffPolicy:
             json.dumps(w), encoding="utf-8"
         )
 
-    def propose(self, state: dict, pool_size: int = 4) -> DiffProposal:
+    def propose(self, state: dict) -> DiffProposal:
         candidates: list[DiffProposal] = []
-        for _ in range(pool_size):
+        for _ in range(self.pool_size):
             p = self.base_policy.propose(state)
+            assert isinstance(p, DiffProposal)
             candidates.append(p)
         weights = self._load_weights()
         scores = [
@@ -62,9 +64,6 @@ class LearnedDiffPolicy:
         chosen = candidates[idx]
         chosen.rationale += f"|learned_prob={probs[idx]:.4f}"
         return chosen
-
-    def propose_diff(self, state: dict) -> str:
-        return self.propose(state).diff
 
     def logp(self, diff: str) -> float:
         weights = self._load_weights()

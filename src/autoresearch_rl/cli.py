@@ -45,6 +45,10 @@ def _run(config: str, overrides: list[str], seed: int | None) -> None:
     if seed is not None:
         cfg.controller.seed = seed
 
+    program = ""
+    if cfg.program_path:
+        program = Path(cfg.program_path).read_text(encoding="utf-8")
+
     target = build_target(cfg.target)
     result = run_continuous(
         target=target,
@@ -53,6 +57,7 @@ def _run(config: str, overrides: list[str], seed: int | None) -> None:
         telemetry=cfg.telemetry,
         policy_cfg=cfg.policy,
         comparability_cfg=cfg.comparability,
+        program=program,
     )
 
     typer.echo(

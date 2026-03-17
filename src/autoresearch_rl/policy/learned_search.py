@@ -13,7 +13,6 @@ from autoresearch_rl.checkpoint import (
 from autoresearch_rl.policy.gae import compute_gae, compute_returns
 from autoresearch_rl.policy.ppo import PPOAgent, PPOConfig
 from autoresearch_rl.policy.sdpo import compute_kl_divergence, compute_sdpo_loss
-from autoresearch_rl.policy.search import ParamPolicy
 from autoresearch_rl.policy.interface import ParamProposal
 
 _HISTORY_WINDOW = 8
@@ -41,7 +40,7 @@ class _Transition:
     reward: float = 0.0
 
 
-class LearnedParamPolicy(ParamPolicy):
+class LearnedParamPolicy:
     """PPO-based param policy that learns from trajectory feedback."""
 
     def __init__(
@@ -74,12 +73,13 @@ class LearnedParamPolicy(ParamPolicy):
                 self.config.snapshot_dir, v
             )
 
-    def next(self, *, history: list[dict]) -> ParamProposal:
-        state = self._extract_state_features(history)
-        action, log_prob, value = self.agent.get_action_and_value(state)
+    def propose(self, state: dict) -> ParamProposal:
+        history: list[dict] = state.get("history", [])
+        state_features = self._extract_state_features(history)
+        action, log_prob, value = self.agent.get_action_and_value(state_features)
         action = action % len(self._combos)
         self._pending = _Transition(
-            state=state, action=action, log_prob=log_prob, value=value,
+            state=state_features, action=action, log_prob=log_prob, value=value,
         )
         params = {
             k: v for k, v in zip(self._keys, self._combos[action])
@@ -166,6 +166,7 @@ class LearnedParamPolicy(ParamPolicy):
         return metrics
 
     def _compute_teacher_kl(self, states: np.ndarray) -> float:
+        assert self._teacher_weights is not None
         teacher = PPOAgent(
             STATE_DIM, self.action_dim, self.config.ppo
         )

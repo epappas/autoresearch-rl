@@ -90,6 +90,7 @@ class TelemetryConfig(BaseModel):
 
 class RunConfig(BaseModel):
     name: str = "autoresearch-run"
+    program_path: str | None = None
     objective: ObjectiveConfig = Field(default_factory=ObjectiveConfig)
     target: TargetConfig = Field(default_factory=TargetConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 @dataclass
@@ -29,3 +29,10 @@ class Policy(Protocol):
     """Unified policy protocol for both param and diff proposals."""
 
     def propose(self, state: dict) -> Proposal: ...
+
+
+@runtime_checkable
+class Learnable(Protocol):
+    """Policy that can receive reward feedback after each proposal."""
+
+    def record_reward(self, reward: float) -> None: ...

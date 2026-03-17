@@ -17,9 +17,10 @@ from autoresearch_rl.controller.helpers import (
 from autoresearch_rl.controller.shutdown import ShutdownHandler
 from autoresearch_rl.controller.types import LoopResult
 from autoresearch_rl.forecasting import should_early_stop
+from autoresearch_rl.policy.interface import Learnable, ParamProposal
 from autoresearch_rl.policy.learned_search import LearnedParamPolicy, LearnedSearchConfig
 from autoresearch_rl.policy.llm_search import LLMParamPolicy
-from autoresearch_rl.policy.search import GridPolicy, ParamPolicy, RandomPolicy, StaticPolicy
+from autoresearch_rl.policy.search import GridPolicy, RandomPolicy, StaticPolicy
 from autoresearch_rl.promotion import PromotionTracker
 from autoresearch_rl.target.interface import RunOutcome, TargetAdapter
 from autoresearch_rl.telemetry.aggregation import compute_episode_stats
@@ -41,7 +42,7 @@ def _score(value: float, objective: ObjectiveConfig) -> float:
     return value if objective.direction == "min" else -value
 
 
-def _policy_from_config(policy_cfg, objective: ObjectiveConfig | None = None) -> ParamPolicy:
+def _policy_from_config(policy_cfg, objective: ObjectiveConfig | None = None):
     if policy_cfg.type == "grid":
         return GridPolicy(policy_cfg.params)
     if policy_cfg.type == "random":
@@ -84,6 +85,7 @@ def run_continuous(
     telemetry: TelemetryConfig,
     policy_cfg,
     comparability_cfg: ComparabilityConfig,
+    program: str = "",
 ) -> LoopResult:
     logger = logging.getLogger(__name__)
     shutdown = ShutdownHandler()
@@ -125,17 +127,16 @@ def run_continuous(
         os.environ["AR_SEED"] = str(controller.seed)
 
     run_manifest_path = str(Path(telemetry.artifacts_dir) / "run-manifest.json")
-    write_run_manifest(
-        run_manifest_path,
-        config={
-            "objective": objective.model_dump(),
-            "controller": controller.model_dump(),
-            "telemetry": telemetry.model_dump(),
-            "policy": policy_cfg.model_dump(),
-            "comparability": comparability_cfg.model_dump(),
-        },
-        run_id=episode_id,
-    )
+    manifest_config: dict = {
+        "objective": objective.model_dump(),
+        "controller": controller.model_dump(),
+        "telemetry": telemetry.model_dump(),
+        "policy": policy_cfg.model_dump(),
+        "comparability": comparability_cfg.model_dump(),
+    }
+    if program:
+        manifest_config["program"] = program
+    write_run_manifest(run_manifest_path, config=manifest_config, run_id=episode_id)
 
     tracker = LocalFileTracker(telemetry.artifacts_dir, episode_id)
     tracker.log_params({
@@ -169,7 +170,8 @@ def run_continuous(
             if controller.max_wall_time_s is not None and elapsed >= controller.max_wall_time_s:
                 break
 
-            proposal = policy.next(history=history)
+            proposal = policy.propose({"history": history, "program": program})
+            assert isinstance(proposal, ParamProposal)
             run_dir = str(Path(telemetry.artifacts_dir) / f"run-{iter_idx:04d}")
             Path(run_dir).mkdir(parents=True, exist_ok=True)
 
@@ -226,7 +228,7 @@ def run_continuous(
                 improved=improved,
             )
 
-            if isinstance(policy, LearnedParamPolicy):
+            if isinstance(policy, Learnable):
                 reward = 1.0 if decision == "keep" else (
                     -0.1 if status == "failed" else 0.0
                 )
