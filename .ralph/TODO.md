@@ -14,11 +14,16 @@ This document captures the gap between the current codebase and the research cor
 with duplicated logic: separate `LoopResult` dataclasses, separate `_current_commit` helpers,
 separate stop-guard implementations, separate telemetry wiring.
 
-**Resolution:** Merge into a single loop controller that supports both modes (bounded iteration
-count and continuous wall-clock) via configuration. Extract shared helpers (commit lookup,
-stop-guard evaluation, telemetry emission) into reusable functions.
+**Resolution:** Unified engine in `controller/engine.py` (`run_experiment()`) with `Executor`,
+`Evaluator`, and `Outcome` protocols in `controller/executor.py`. The continuous loop
+(`continuous.py`, 78 lines) is now a thin wrapper that constructs `TargetExecutor` +
+`MetricEvaluator` and delegates to `run_experiment()`. The legacy sandbox loop (`loop.py`)
+retains its own implementation because its deferred-scoring architecture (judge needs
+iteration N+1 output to score iteration N) is structurally incompatible with a per-iteration
+engine. Shared helpers (stop guards, commit, `LoopResult`) already extracted in prior work.
 
-**Files:** `controller/continuous.py`, `controller/loop.py`, `cli.py`, `scripts/run_once.py`
+**Files:** `controller/engine.py` (new), `controller/executor.py` (new),
+`controller/continuous.py` (rewritten as wrapper), `controller/__init__.py` (exports added)
 **Dependencies:** None. All subsequent tasks build on the unified loop.
 
 ### A.2 Fix duplicate seed field in ControllerConfig [COMPLETE]
@@ -37,12 +42,15 @@ stop-guard evaluation, telemetry emission) into reusable functions.
 Both are called "policies" but have incompatible interfaces and serve the same conceptual role
 (propose the next action given history).
 
-**Resolution:** Define a single `Policy` protocol with a `propose(state) -> Proposal` method.
-Param-based and diff-based proposals are both subtypes of `Proposal`. Remove `policy/interface.py`
-and fold its protocol into the unified base.
+**Resolution:** Single `Policy` protocol in `policy/interface.py` with `propose(state) -> Proposal`.
+`ParamProposal` and `DiffProposal` are typed subtypes of `Proposal`. `Learnable` protocol for
+reward feedback. All concrete policies (`GridPolicy`, `RandomPolicy`, `StaticPolicy`,
+`LLMParamPolicy`, `LearnedParamPolicy`, `GreedyLLMPolicy`, `LearnedDiffPolicy`) implement this
+protocol. `policy/interface.py` IS the unified protocol -- the prior resolution text saying
+"Remove interface.py" was incorrect.
 
-**Files:** `policy/search.py`, `policy/interface.py`, `policy/baselines.py`, `policy/learned.py`,
-`controller/continuous.py`, `controller/loop.py`
+**Files:** `policy/interface.py`, `policy/search.py`, `policy/baselines.py`, `policy/learned.py`,
+`policy/llm_search.py`, `policy/learned_search.py`
 **Dependencies:** A.1
 
 ### A.4 Fix version mismatch [COMPLETE]
