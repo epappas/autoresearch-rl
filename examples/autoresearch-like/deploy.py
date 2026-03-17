@@ -15,6 +15,12 @@ DOCKERFILE = DIR / "Dockerfile"
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Deploy autoresearch-like to Basilica")
+    p.add_argument(
+        "--policy",
+        choices=["llm_diff", "hybrid", "llm", "grid"],
+        default=None,
+        help="Override policy type (default: llm_diff from config.yaml)",
+    )
     p.add_argument("--image-tag", default=None, help="Docker image tag to build and push")
     p.add_argument("--skip-build", action="store_true", help="Skip docker build/push")
     p.add_argument("overrides", nargs="*", help="Extra --override key=value pairs")
@@ -44,6 +50,8 @@ def main() -> int:
     cmd += ["--override", 'target.train_cmd=["python3","/app/train.py"]']
     if args.image_tag:
         cmd += ["--override", f"target.basilica.image={args.image_tag}"]
+    if args.policy:
+        cmd += ["--override", f"policy.type={args.policy}"]
     for ov in args.overrides:
         cmd += ["--override", ov]
 

@@ -16,6 +16,12 @@ DEFAULT_IMAGE = "pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel"
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Deploy basilica-grpo to Basilica cloud")
+    p.add_argument(
+        "--policy",
+        choices=["llm", "grid"],
+        default=None,
+        help="Override policy type (default: llm from config.yaml)",
+    )
     p.add_argument("--image-tag", default=None, help="Custom Docker image tag to build and push")
     p.add_argument("--skip-build", action="store_true", help="Skip docker build/push")
     p.add_argument("overrides", nargs="*", help="Extra --override key=value pairs")
@@ -30,23 +36,23 @@ def main() -> int:
 
     if args.image_tag and not args.skip_build:
         print(f"Building Docker image: {image_tag}")
-        build_ret = subprocess.run(
+        ret = subprocess.run(
             ["docker", "build", "-t", image_tag, "-f", str(DOCKERFILE), str(DIR)],
             check=False,
         )
-        if build_ret.returncode != 0:
-            print("ERROR: docker build failed")
-            return build_ret.returncode
+        if ret.returncode != 0:
+            return ret.returncode
 
         print(f"Pushing Docker image: {image_tag}")
-        push_ret = subprocess.run(["docker", "push", image_tag], check=False)
-        if push_ret.returncode != 0:
-            print("ERROR: docker push failed")
-            return push_ret.returncode
+        ret = subprocess.run(["docker", "push", image_tag], check=False)
+        if ret.returncode != 0:
+            return ret.returncode
 
     cmd = ["uv", "run", "autoresearch-rl", "--config", str(CONFIG)]
     if args.image_tag:
         cmd += ["--override", f"target.basilica.image={image_tag}"]
+    if args.policy:
+        cmd += ["--override", f"policy.type={args.policy}"]
     for ov in args.overrides:
         cmd += ["--override", ov]
 

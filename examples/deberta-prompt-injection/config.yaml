@@ -9,7 +9,7 @@ objective:
 target:
   type: command
   workdir: examples/deberta-prompt-injection
-  timeout_s: 600
+  timeout_s: 1200
   train_cmd:
     - python3
     - train.py
@@ -29,43 +29,43 @@ target:
     - --output-dir
     - /tmp/deberta-out
   basilica:
-    image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
+    image: ghcr.io/epappas/ar-deberta-e2e:latest
     gpu_count: 1
     gpu_models: ["A100", "H100", "L40S", "RTX-4090", "RTX-A6000"]
     memory: "32Gi"
     cpu: "8"
     storage: null
-    ttl_seconds: 900
-    setup_cmd: >-
-      pip install -q transformers datasets accelerate scikit-learn protobuf
-      && mkdir -p /app/data
-      && python3 -c "import urllib.request;
-      urllib.request.urlretrieve('https://raw.githubusercontent.com/epappas/autoresearch-rl/main/examples/deberta-prompt-injection/train.py', '/app/train.py');
-      urllib.request.urlretrieve('https://raw.githubusercontent.com/epappas/autoresearch-rl/main/examples/deberta-prompt-injection/data/train.jsonl', '/app/data/train.jsonl');
-      urllib.request.urlretrieve('https://raw.githubusercontent.com/epappas/autoresearch-rl/main/examples/deberta-prompt-injection/data/val.jsonl', '/app/data/val.jsonl')"
+    ttl_seconds: 1200
 
 policy:
-  type: llm
+  type: hybrid
+  mutable_file: examples/deberta-prompt-injection/train.py
+  frozen_file: examples/deberta-prompt-injection/prepare.py
+  program_file: examples/deberta-prompt-injection/program.md
   params:
     learning_rate: [0.00001, 0.00002, 0.00003]
     epochs: [1, 2, 3]
     weight_decay: [0.0, 0.01, 0.1]
-    batch_size: [4, 8]
+    batch_size: [8, 16, 32]
     grad_clip: [0.5, 1.0]
   llm_api_url: "https://llm.chutes.ai/v1"
-  llm_model: "MiniMaxAI/MiniMax-M2.5-TEE"
+  llm_model: "deepseek-ai/DeepSeek-V3-0324"
   llm_api_key_env: "CHUTES_API_KEY"
-  llm_timeout_s: 30
+  llm_timeout_s: 60
+  hybrid_param_explore_iters: 5
+  hybrid_stall_threshold: 3
+  hybrid_diff_failure_limit: 3
 
 controller:
-  max_wall_time_s: 600
-  no_improve_limit: 3
+  max_wall_time_s: 7200
+  no_improve_limit: 5
   failure_rate_limit: 0.8
   failure_window: 5
+  checkpoint_path: artifacts/deberta/checkpoint.json
 
 comparability:
   budget_mode: fixed_wallclock
-  expected_budget_s: 600
+  expected_budget_s: 7200
   expected_hardware_fingerprint: null
   strict: false
 

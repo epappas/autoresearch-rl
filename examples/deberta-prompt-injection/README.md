@@ -1,55 +1,73 @@
 # deberta-prompt-injection
 
-Fine-tune DeBERTa for prompt-injection classification.
+Fine-tune DeBERTa for prompt-injection classification using the `hybrid` policy:
+LLM-guided hyperparameter search for the first N iterations, then code diff proposals when stalled.
 
 ## Prerequisites
 
 ```bash
+export CHUTES_API_KEY="your-key"
 pip install -r examples/deberta-prompt-injection/requirements.txt
 ```
 
-## Run (local, LLM-guided -- default)
+## Run (local)
 
 ```bash
-export CHUTES_API_KEY="your-key"
 bash examples/deberta-prompt-injection/run.sh
 ```
 
-## Run (local, grid search)
+## Agentic workflow
 
 ```bash
-bash examples/deberta-prompt-injection/run.sh --override policy.type=grid
+# Check experiment state (JSON output — agent-readable)
+uv run autoresearch-rl status \
+  --config examples/deberta-prompt-injection/config.yaml --last 5
+
+# Inject explicit hyperparameters and run one iteration
+uv run autoresearch-rl run-one \
+  --config examples/deberta-prompt-injection/config.yaml \
+  --params '{"learning_rate": 0.00002, "epochs": 2, "batch_size": 8}'
+
+# Inject a code diff and run one iteration
+uv run autoresearch-rl run-one \
+  --config examples/deberta-prompt-injection/config.yaml \
+  --diff path/to/change.patch
 ```
 
 ## Deploy (Basilica)
 
 ```bash
-export BASILICA_API_TOKEN="your-basilica-token"
-
-# LLM-guided (default)
+export BASILICA_API_TOKEN="your-token"
 python3 examples/deberta-prompt-injection/deploy.py
 
-# Grid search on Basilica
+# LLM-only param search
+python3 examples/deberta-prompt-injection/deploy.py --policy llm
+
+# Grid search (no LLM required)
 python3 examples/deberta-prompt-injection/deploy.py --policy grid
 ```
 
 ## How it works
-- Params injected via env vars:
-  - `AR_PARAMS_JSON`
-  - `AR_PARAM_<NAME>`
-- Script prints metrics including `val_bpb`.
-- `val_bpb = 1.0 - f1` (lower is better).
-- `program.md` provides task context to the LLM policy.
 
-## What to expect
-- Local runs are slow (HF fine-tuning on CPU or small GPU).
-- Basilica deploys use 1x A100/H100/L40S with `setup_cmd` to install deps and fetch files.
-- Artifacts written to `artifacts/deberta/` and `traces/deberta/`.
+- **Policy**: `hybrid` — starts with multi-turn LLM hyperparameter proposals
+  (`hybrid_param_explore_iters=5`), switches to code diff proposals after
+  `hybrid_stall_threshold=3` no-improvement iterations, falls back to params after
+  `hybrid_diff_failure_limit=3` consecutive diff failures.
+- **Multi-turn**: the LLM's prior reasoning is included in each new API call.
+- **Contract**: diffs may only touch `train.py`; `prepare.py` is frozen.
+- Metric: `val_bpb = 1 - f1` (lower is better).
 
-## Notes
-Use `--override` to tweak parameters without editing the config:
-```bash
-bash examples/deberta-prompt-injection/run.sh \
-  --override controller.max_wall_time_s=3600 \
-  --override target.timeout_s=1800
-```
+## Files
+
+| File | Role |
+|------|------|
+| `train.py` | Mutable — the LLM modifies this |
+| `prepare.py` | Frozen — data loading infrastructure, not modified |
+| `program.md` | Task spec provided to the LLM |
+| `data/` | Train/val JSONL splits |
+
+## Artifacts
+
+- `artifacts/deberta/results.tsv` — per-iteration scores
+- `artifacts/deberta/versions/` — kept iterations
+- `artifacts/deberta/checkpoint.json` — resumable state

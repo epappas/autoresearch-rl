@@ -1,59 +1,74 @@
-# Basilica GRPO: Qwen2.5-0.5B on GSM8K
+# basilica-grpo: Qwen2.5-0.5B on GSM8K
 
-Fine-tune Qwen2.5-0.5B-Instruct using GRPO (Group Relative Policy Optimization)
-on GSM8K math reasoning, deployed on Basilica GPU cloud.
+Fine-tune Qwen2.5-0.5B-Instruct with GRPO on GSM8K using multi-turn LLM-guided hyperparameter
+search — the LLM builds cumulative reasoning across iterations from the full experiment history.
 
 ## Prerequisites
 
 ```bash
 export BASILICA_API_TOKEN="your-basilica-token"
+export CHUTES_API_KEY="your-key"
 export HF_TOKEN="your-huggingface-token"
 pip install basilica-sdk
 ```
 
-## Run (local)
+## Run (Basilica required)
+
 ```bash
 bash examples/basilica-grpo/run.sh
 ```
 
-## Deploy (Basilica)
-```bash
-export BASILICA_API_TOKEN="your-token"
-python3 examples/basilica-grpo/deploy.py
+## Agentic workflow
 
-# With custom Docker image
-python3 examples/basilica-grpo/deploy.py --image-tag your-registry/grpo:latest
+```bash
+# Check experiment state (JSON output — agent-readable)
+uv run autoresearch-rl status \
+  --config examples/basilica-grpo/config.yaml --last 5
+
+# Inject explicit hyperparameters and run one Basilica iteration
+uv run autoresearch-rl run-one \
+  --config examples/basilica-grpo/config.yaml \
+  --params '{"learning_rate": 5e-6, "max_steps": 30, "num_generations": 4}'
 ```
 
-## How It Works
+## Deploy (Basilica)
 
-1. The autoresearch-rl loop proposes hyperparameter combinations (learning_rate, batch_size, max_steps)
-2. For each iteration, a Basilica deployment is created with a GPU container
-3. The container runs `train.py` which:
-   - Loads Qwen2.5-0.5B-Instruct
-   - Fine-tunes with TRL's GRPOTrainer on GSM8K
-   - Evaluates pass@1 on GSM8K test set
-   - Prints metrics to stdout
-4. The controller parses metrics from deployment logs
-5. Keep/discard based on val_bpb improvement (1 - pass@1, lower is better)
+```bash
+python3 examples/basilica-grpo/deploy.py
 
-## Search Space
+# Custom Docker image
+python3 examples/basilica-grpo/deploy.py --image-tag your-registry/grpo:latest
 
-| Parameter | Values | Description |
-|-----------|--------|-------------|
-| learning_rate | 3e-6, 5e-6, 1e-5 | GRPO learning rate |
-| batch_size | 4, 8 | Per-device batch size |
-| max_steps | 20, 30 | Training steps |
+# Grid search (no LLM required)
+python3 examples/basilica-grpo/deploy.py --policy grid
+```
+
+## How it works
+
+1. The `llm` policy proposes hyperparameters using multi-turn conversation, incorporating the
+   full iteration history into each API call.
+2. For each iteration, a Basilica deployment is created with a GPU container.
+3. The container runs `train.py` which loads Qwen2.5-0.5B, trains with GRPO on GSM8K,
+   evaluates pass@1, and prints metrics to stdout.
+4. The controller parses metrics from deployment logs and applies keep/discard.
+5. `program.md` provides the task spec to the LLM as persistent context.
+
+## Files
+
+| File | Role |
+|------|------|
+| `train.py` | GRPO training script |
+| `prepare.py` | Frozen — dataset loading and prompt formatting |
+| `program.md` | Task spec provided to the LLM |
 
 ## GPU Requirements
 
-- 1x A100 or H100 (24GB+ VRAM)
+- 1× A100 or H100 (24GB+ VRAM)
 - ~32GB system memory
-- ~15 minutes per iteration
+- ~15–20 minutes per iteration
 
-## Output
+## Artifacts
 
-Results are tracked in:
-- `artifacts/basilica-grpo/results.tsv` -- per-iteration scores
-- `artifacts/basilica-grpo/versions/` -- kept iterations
-- `traces/basilica-grpo/events.jsonl` -- telemetry
+- `artifacts/basilica-grpo/results.tsv` — per-iteration scores
+- `artifacts/basilica-grpo/versions/` — kept iterations
+- `artifacts/basilica-grpo/checkpoint.json` — resumable state
