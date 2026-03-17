@@ -14,7 +14,12 @@ CONFIG = DIR / "config.yaml"
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Deploy deberta-prompt-injection to Basilica")
-    p.add_argument("--policy", choices=["grid", "llm"], default=None)
+    p.add_argument(
+        "--policy",
+        choices=["hybrid", "llm_diff", "llm", "grid"],
+        default=None,
+        help="Override policy type (default: hybrid from config.yaml)",
+    )
     p.add_argument("overrides", nargs="*", help="Extra --override key=value pairs")
     args = p.parse_args()
 
@@ -29,11 +34,10 @@ def main() -> int:
             "\"--train-file\",\"/app/data/train.jsonl\","
             "\"--val-file\",\"/app/data/val.jsonl\","
             "\"--output-dir\",\"/tmp/deberta-out\"]"]
-    cmd += ["--override", "target.timeout_s=900"]
+    cmd += ["--override", "target.timeout_s=1200"]
     cmd += ["--override", "controller.max_wall_time_s=7200"]
-    cmd += ["--override", "comparability.expected_budget_s=900"]
-    cmd += ["--override", "target.basilica.ttl_seconds=900"]
-
+    cmd += ["--override", "comparability.expected_budget_s=7200"]
+    cmd += ["--override", "target.basilica.ttl_seconds=1200"]
     if args.policy:
         cmd += ["--override", f"policy.type={args.policy}"]
     for ov in args.overrides:

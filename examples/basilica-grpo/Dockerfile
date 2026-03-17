@@ -12,5 +12,6 @@ RUN pip install --no-cache-dir \
     scipy
 
 COPY train.py /app/train.py
+COPY prepare.py /app/prepare.py
 
 CMD ["python3", "train.py"]

@@ -1,4 +1,6 @@
-name: autoresearch-run
+name: minimal-trainable-target
+
+program_path: examples/minimal-trainable-target/program.md
 
 objective:
   metric: val_bpb
@@ -7,7 +9,7 @@ objective:
 target:
   type: command
   workdir: examples/minimal-trainable-target
-  timeout_s: 3600
+  timeout_s: 30
   train_cmd:
     - python3
     - train.py
@@ -23,38 +25,30 @@ target:
     ttl_seconds: 300
 
 policy:
-  type: grid
-  params:
-    learning_rate: [0.0015, 0.0026, 0.0032]
-    grad_clip: [0.7, 0.85, 1.0]
-    use_qk_norm: [true, false]
+  type: llm_diff
+  mutable_file: examples/minimal-trainable-target/train.py
+  frozen_file: examples/minimal-trainable-target/prepare.py
+  program_file: examples/minimal-trainable-target/program.md
+  llm_api_url: "https://llm.chutes.ai/v1"
+  llm_model: "deepseek-ai/DeepSeek-V3-0324"
+  llm_api_key_env: "CHUTES_API_KEY"
+  llm_timeout_s: 30
 
 controller:
-  max_wall_time_s: 60
-  no_improve_limit: 6
+  max_wall_time_s: 300
+  no_improve_limit: 5
   failure_rate_limit: 0.8
   failure_window: 5
+  checkpoint_path: artifacts/minimal/checkpoint.json
 
-scoring:
-  val_bpb: 1.0
-  loss: 0.15
-  fail_penalty: 0.8
-  timeout_penalty: 1.2
-  neutral_penalty: 0.05
-  directional_bonus: 0.2
-  early_stop_penalty: 0.4
-  eval_score_weight: 0.25
+comparability:
+  budget_mode: fixed_wallclock
+  expected_budget_s: 300
+  expected_hardware_fingerprint: null
+  strict: false
 
 telemetry:
   trace_path: traces/events.jsonl
   ledger_path: artifacts/results.tsv
   artifacts_dir: artifacts/runs
   versions_dir: artifacts/versions
-  max_file_size_bytes: 52428800  # 50 MB
-  max_rotated_files: 5
-
-comparability:
-  budget_mode: fixed_wallclock
-  expected_budget_s: 60
-  expected_hardware_fingerprint: null
-  strict: false

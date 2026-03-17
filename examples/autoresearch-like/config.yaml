@@ -1,5 +1,7 @@
 name: autoresearch-like
 
+program_path: examples/autoresearch-like/program.md
+
 objective:
   metric: val_bpb
   direction: min
@@ -23,21 +25,25 @@ target:
     ttl_seconds: 300
 
 policy:
-  type: grid
-  params:
-    learning_rate: [0.0020, 0.0026, 0.0032]
-    grad_clip: [0.7, 0.85, 1.0]
-    use_qk_norm: [true, false]
+  type: llm_diff
+  mutable_file: examples/autoresearch-like/train.py
+  frozen_file: examples/autoresearch-like/prepare.py
+  program_file: examples/autoresearch-like/program.md
+  llm_api_url: "https://llm.chutes.ai/v1"
+  llm_model: "deepseek-ai/DeepSeek-V3-0324"
+  llm_api_key_env: "CHUTES_API_KEY"
+  llm_timeout_s: 60
 
 controller:
-  max_wall_time_s: 30
+  max_wall_time_s: 300
   no_improve_limit: 5
   failure_rate_limit: 0.8
   failure_window: 5
+  checkpoint_path: artifacts/autoresearch-like/checkpoint.json
 
 comparability:
   budget_mode: fixed_wallclock
-  expected_budget_s: 30
+  expected_budget_s: 300
   expected_hardware_fingerprint: null
   strict: false
 
