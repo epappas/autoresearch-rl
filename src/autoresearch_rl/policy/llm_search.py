@@ -14,6 +14,7 @@ from autoresearch_rl.policy.interface import ParamProposal
 logger = logging.getLogger(__name__)
 
 _MAX_HISTORY = 50
+_MAX_CONVERSATION_PAIRS = 10
 _SYSTEM_PROMPT = (
     "You are a hyperparameter optimization assistant. "
     "Given a search space and experiment history, propose the next set of "
@@ -28,6 +29,9 @@ def _format_prompt(
     metric: str,
     direction: str,
     program: str = "",
+    source: str = "",
+    recent_errors: list[str] | None = None,
+    recent_logs: list[str] | None = None,
 ) -> str:
     lines: list[str] = []
     if program:
@@ -36,6 +40,14 @@ def _format_prompt(
         lines.append("")
     lines.append(f"Objective: {direction}imize '{metric}'")
     lines.append("")
+
+    if source:
+        lines.append("Training script:")
+        lines.append("```python")
+        lines.append(source)
+        lines.append("```")
+        lines.append("")
+
     lines.append("Search space:")
     for name, values in space.items():
         lines.append(f"  {name}: {values}")
@@ -52,8 +64,20 @@ def _format_prompt(
             lines.append(f"  params={params} -> {metric}={val} (status={status})")
     else:
         lines.append("No experiment history yet. Propose a good starting configuration.")
-
     lines.append("")
+
+    if recent_errors:
+        lines.append("Recent errors:")
+        for err in recent_errors:
+            lines.append(f"  - {err}")
+        lines.append("")
+
+    if recent_logs:
+        lines.append("Recent training logs:")
+        for log_entry in recent_logs:
+            lines.append(f"  {log_entry}")
+        lines.append("")
+
     lines.append(
         "Respond with ONLY a JSON object. "
         "Keys must match the parameter names above. "
@@ -62,24 +86,21 @@ def _format_prompt(
     return "\n".join(lines)
 
 
-def _call_chat_api(
+def _call_chat_api_messages(
     url: str,
     model: str,
     api_key: str,
-    system: str,
-    user: str,
+    messages: list[dict],
     timeout: int,
+    max_tokens: int = 1024,
 ) -> str:
     endpoint = url.rstrip("/") + "/chat/completions"
     payload = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+        "messages": messages,
         "stream": False,
         "temperature": 0.7,
-        "max_tokens": 1024,
+        "max_tokens": max_tokens,
     }
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
@@ -94,6 +115,21 @@ def _call_chat_api(
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         body = json.loads(resp.read().decode("utf-8"))
     return body["choices"][0]["message"]["content"]
+
+
+def _call_chat_api(
+    url: str,
+    model: str,
+    api_key: str,
+    system: str,
+    user: str,
+    timeout: int,
+) -> str:
+    return _call_chat_api_messages(
+        url, model, api_key,
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        timeout,
+    )
 
 
 def _coerce_value(raw: Any, allowed: list[Any]) -> Any | None:
@@ -173,7 +209,11 @@ def _random_fallback(
 
 
 class LLMParamPolicy:
-    """Calls an OpenAI-compatible chat API to propose hyperparameters."""
+    """Calls an OpenAI-compatible chat API to propose hyperparameters.
+
+    Maintains conversation history across iterations so the LLM builds
+    cumulative reasoning about what hyperparameters work and why.
+    """
 
     def __init__(
         self,
@@ -195,25 +235,53 @@ class LLMParamPolicy:
         self._metric = metric
         self._direction = direction
         self._rng = random.Random(seed)
+        self._conversation: list[dict] = []
 
     def propose(self, state: dict) -> ParamProposal:
         history: list[dict] = state.get("history", [])
         program: str = state.get("program", "")
+        source: str = state.get("source", "")
+        recent_errors: list[str] | None = state.get("recent_errors")
+        recent_logs: list[str] | None = state.get("recent_logs")
         api_key = os.environ.get(self._api_key_env)
         if not api_key:
             logger.warning("LLM policy: %s not set, falling back to random", self._api_key_env)
             return _random_fallback(self._space, self._rng)
 
         try:
-            user_prompt = _format_prompt(
-                self._space, history, self._metric, self._direction, program=program
+            user_msg = _format_prompt(
+                self._space,
+                history,
+                self._metric,
+                self._direction,
+                program=program,
+                source=source,
+                recent_errors=recent_errors,
+                recent_logs=recent_logs,
             )
-            raw = _call_chat_api(
-                self._api_url, self._model, api_key,
-                _SYSTEM_PROMPT, user_prompt, self._timeout_s,
+            messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+            messages.extend(self._trimmed_conversation())
+            messages.append({"role": "user", "content": user_msg})
+
+            raw = _call_chat_api_messages(
+                self._api_url, self._model, api_key, messages, self._timeout_s,
             )
             params = _parse_response(raw, self._space)
+
+            self._conversation.append({"role": "user", "content": user_msg})
+            self._conversation.append({"role": "assistant", "content": raw})
+            self._trim_conversation()
+
             return ParamProposal(params=params, rationale="llm")
         except Exception:
             logger.warning("LLM policy failed, falling back to random", exc_info=True)
             return _random_fallback(self._space, self._rng)
+
+    def _trimmed_conversation(self) -> list[dict]:
+        limit = _MAX_CONVERSATION_PAIRS * 2
+        return self._conversation[-limit:]
+
+    def _trim_conversation(self) -> None:
+        limit = _MAX_CONVERSATION_PAIRS * 2
+        if len(self._conversation) > limit:
+            self._conversation = self._conversation[-limit:]
