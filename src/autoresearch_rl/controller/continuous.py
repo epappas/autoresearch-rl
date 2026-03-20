@@ -110,6 +110,7 @@ def _make_diff_state_builder(
             "history": history,
             "program": program,
             "source": source,
+            "mutable_file": mutable_file,
             "recent_errors": extract_recent_errors(history),
             "recent_logs": extract_recent_logs(history),
         }

@@ -1,11 +1,11 @@
 """GRPO fine-tuning of Qwen2.5-0.5B-Instruct on GSM8K.
 
-Pure PyTorch implementation — no TRL/accelerate dependency.
+Pure PyTorch implementation -- no TRL/accelerate dependency.
 Runs inside a Basilica deployment with params from AR_PARAMS_JSON.
 
 Algorithm (DeepSeek-R1 GRPO):
   1. Sample prompts, generate G completions per prompt
-  2. Score each completion with reward function
+  2. Score each completion with reward function (from prepare.py)
   3. Compute per-prompt advantage: reward_i - mean(rewards)
   4. Compute clipped policy gradient loss
   5. Update model
@@ -18,17 +18,22 @@ Metrics output (parsed by autoresearch-rl):
 from __future__ import annotations
 
 import json
-import math
 import os
-import re
 import time
 
 import torch
 import torch.nn.functional as F
-from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+from prepare import (
+    MODEL_NAME,
+    build_answer_map,
+    compute_reward,
+    evaluate_model,
+    format_prompt,
+    load_eval_data,
+    load_train_data,
+)
 
 
 def load_params() -> dict[str, object]:
@@ -37,54 +42,6 @@ def load_params() -> dict[str, object]:
         return json.loads(raw)
     except json.JSONDecodeError:
         return {}
-
-
-def format_prompt(question: str) -> str:
-    return (
-        "Solve the following math problem step by step.\n\n"
-        f"Question: {question}\n\n"
-        "Answer:"
-    )
-
-
-def extract_answer(text: str) -> str | None:
-    patterns = [
-        r"####\s*([\d,.-]+)",
-        r"(?:answer|result)\s*(?:is|=)\s*([\d,.-]+)",
-        r"([\d,]+(?:\.\d+)?)\s*$",
-    ]
-    for pat in patterns:
-        match = re.search(pat, text, re.IGNORECASE)
-        if match:
-            return match.group(1).replace(",", "").strip()
-    return None
-
-
-def compute_reward(completion: str, ground_truth: str) -> float:
-    pred = extract_answer(completion)
-    expected = extract_answer(ground_truth)
-    if pred and expected and pred.strip() == expected.strip():
-        return 1.0
-    return 0.0
-
-
-def evaluate_model(model, tokenizer, eval_ds, max_samples: int = 100) -> float:
-    model.eval()
-    correct = 0
-    total = min(len(eval_ds), max_samples)
-
-    for i in range(total):
-        prompt = format_prompt(eval_ds[i]["question"])
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        with torch.no_grad():
-            outputs = model.generate(**inputs, max_new_tokens=256, do_sample=False)
-        response = tokenizer.decode(
-            outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True,
-        )
-        if compute_reward(response, eval_ds[i]["answer"]) > 0:
-            correct += 1
-
-    return correct / max(total, 1)
 
 
 def generate_completions(
@@ -103,7 +60,6 @@ def generate_completions(
                 return_dict_in_generate=True, output_scores=True,
             )
         gen_ids = out.sequences[0, input_len:]
-        # Compute log probs from scores
         log_probs = []
         for t, scores in enumerate(out.scores):
             lp = F.log_softmax(scores[0], dim=-1)
@@ -123,12 +79,10 @@ def grpo_step(
     clip_eps: float = 0.2, kl_coeff: float = 0.01,
 ) -> dict[str, float]:
     """One GRPO update step on a single prompt."""
-    # Generate completions with current policy (no grad for generation)
     completions = generate_completions(
         model, tokenizer, prompt, num_gen, max_new, temperature,
     )
 
-    # Compute rewards
     rewards = [compute_reward(text, ground_truth) for text, _, _ in completions]
     mean_reward = sum(rewards) / len(rewards)
     advantages = [r - mean_reward for r in rewards]
@@ -136,7 +90,6 @@ def grpo_step(
     if all(a == 0.0 for a in advantages):
         return {"loss": 0.0, "reward": mean_reward, "skipped": 1.0}
 
-    # Compute policy gradient loss
     model.train()
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     input_len = inputs["input_ids"].shape[1]
@@ -150,25 +103,22 @@ def grpo_step(
 
         full_ids = torch.cat([inputs["input_ids"][0], gen_ids]).unsqueeze(0)
         outputs = model(full_ids)
-        logits = outputs.logits[0, input_len - 1:-1, :]  # shift by 1
+        logits = outputs.logits[0, input_len - 1:-1, :]
         new_log_probs = F.log_softmax(logits, dim=-1)
         token_log_probs = new_log_probs.gather(1, gen_ids.unsqueeze(1)).squeeze(1)
 
-        # Also compute ref model log probs for KL penalty
         with torch.no_grad():
             ref_outputs = ref_model(full_ids)
             ref_logits = ref_outputs.logits[0, input_len - 1:-1, :]
             ref_log_probs = F.log_softmax(ref_logits, dim=-1)
             ref_token_lp = ref_log_probs.gather(1, gen_ids.unsqueeze(1)).squeeze(1)
 
-        # Clipped policy ratio
         min_len = min(len(token_log_probs), len(old_log_probs))
         ratio = torch.exp(token_log_probs[:min_len] - old_log_probs[:min_len])
         clipped = torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps)
         adv = torch.tensor(advantage, device=model.device)
         pg_loss = -torch.min(ratio * adv, clipped * adv).mean()
 
-        # KL penalty
         kl = (token_log_probs[:min_len] - ref_token_lp[:min_len]).mean()
 
         total_loss = total_loss + pg_loss + kl_coeff * kl
@@ -195,7 +145,7 @@ def main() -> None:
     max_steps = int(params.get("max_steps", 30))
     num_generations = int(params.get("num_generations", 2))
     temperature = float(params.get("temperature", 1.0))
-    max_completion = 128
+    max_completion = 256
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if torch.cuda.is_available():
@@ -211,7 +161,6 @@ def main() -> None:
         MODEL_NAME, torch_dtype=torch.bfloat16,
     ).to(device)
 
-    # Reference model (frozen copy for KL penalty)
     ref_model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME, torch_dtype=torch.bfloat16,
     ).to(device)
@@ -219,14 +168,14 @@ def main() -> None:
     for p in ref_model.parameters():
         p.requires_grad = False
 
-    # Dataset
-    train_data = load_dataset("openai/gsm8k", "main", split="train")
-    eval_ds = load_dataset("openai/gsm8k", "main", split="test")
+    train_data = load_train_data(max_samples=256)
+    eval_ds = load_eval_data(max_samples=200)
 
     print("Evaluating baseline...", flush=True)
     baseline_score = evaluate_model(model, tokenizer, eval_ds, max_samples=50)
     print(f"[baseline] {baseline_score:.4f} pass@1", flush=True)
 
+    answer_map = build_answer_map(tokenizer=tokenizer)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
 
     print(f"[config] lr {lr}, steps {max_steps}, gen {num_generations}, temp {temperature}", flush=True)
@@ -239,7 +188,7 @@ def main() -> None:
         idx = step % n_samples
         question = train_data[idx]["question"]
         answer = train_data[idx]["answer"]
-        prompt = format_prompt(question)
+        prompt = format_prompt(question, tokenizer=tokenizer)
 
         metrics = grpo_step(
             model, ref_model, tokenizer, optimizer,
@@ -264,7 +213,6 @@ def main() -> None:
     training_seconds = time.time() - t0
     print("Training complete.", flush=True)
 
-    # Final evaluation
     print("Evaluating trained model...", flush=True)
     eval_score = evaluate_model(model, tokenizer, eval_ds, max_samples=100)
     avg_loss = total_loss / max(max_steps, 1)
@@ -272,8 +220,6 @@ def main() -> None:
     print(f"eval_score={eval_score:.6f}", flush=True)
     print(f"loss={avg_loss:.6f}", flush=True)
     print(f"training_seconds={training_seconds:.1f}", flush=True)
-    print(f"baseline={baseline_score:.6f}", flush=True)
-    print(f"improvement={eval_score - baseline_score:.6f}", flush=True)
 
 
 if __name__ == "__main__":
