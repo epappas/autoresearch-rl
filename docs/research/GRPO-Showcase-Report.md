@@ -19,6 +19,111 @@ not 4% mathematical reasoning ability. Fixing the prompt template or adding form
 reward shaping would unlock the model's actual capabilities. See [Known Issues](#known-issues)
 for details.
 
+## Basilica: Cloud GPU Infrastructure for Autonomous ML
+
+Basilica is a GPU cloud platform that provides on-demand containerized GPU instances.
+This experiment uses Basilica as the execution backend, and the integration demonstrates
+capabilities that are not possible with local GPU setups or traditional cloud VMs.
+
+### Why Basilica
+
+Traditional ML experiment loops run on a single machine: the researcher's GPU, a cloud VM,
+or a shared cluster. This creates three problems that Basilica solves:
+
+1. **Isolation:** Each experiment runs in a fresh container with its own dependencies,
+   CUDA runtime, and filesystem. A bad hyperparameter choice that corrupts model weights
+   or fills disk cannot affect subsequent experiments. Basilica containers are ephemeral --
+   they are created, used, and destroyed per iteration.
+
+2. **Elasticity:** The autoresearch-rl controller runs on a lightweight CPU machine (no GPU
+   required). It provisions A100-80GB instances on Basilica only when needed, pays only for
+   training time, and releases them immediately after. There is no idle GPU cost between
+   iterations while the LLM policy reasons about the next hyperparameter proposal.
+
+3. **Reproducibility:** Each iteration records the exact container image, GPU model
+   (NVIDIA A100-SXM4-80GB), hardware fingerprint, and training parameters in the telemetry
+   ledger. The Basilica deployment API guarantees the same hardware class across iterations,
+   making results comparable.
+
+### How Basilica Is Used
+
+The autoresearch-rl framework's `BasilicaTarget` adapter manages the full lifecycle
+of each training iteration:
+
+```
+Controller (CPU) --> Basilica API --> GPU Container --> Metrics --> Keep/Discard
+     |                                    |
+     |  1. Create deployment              |  4. Poll logs for metrics
+     |  2. Inject train.py via base64     |  5. Parse eval_score=X.XX
+     |  3. Wait for health check          |  6. Cleanup deployment
+```
+
+Each iteration:
+- Deploys a `pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel` container on an A100 GPU
+- Injects the training script via base64-encoded environment variable (no Docker registry needed)
+- Installs dependencies via `setup_cmd` (pip install at container start)
+- Starts a health-check HTTP server in a daemon thread for Basilica liveness probes
+- Runs the GRPO training with parameters from `AR_PARAMS_JSON` environment variable
+- Streams training logs; the adapter polls for `key=value` metric patterns in stdout
+- Cleans up the deployment after metrics are collected or on timeout/failure
+
+### What Makes This Novel
+
+No existing autonomous ML research framework combines these capabilities:
+
+- **LLM-guided search over cloud GPU:** The LLM policy (DeepSeek-V3) proposes hyperparameters
+  based on full experiment history, and each proposal is executed on a fresh cloud GPU
+  instance. The controller never touches a GPU directly.
+
+- **Hybrid param + code diff mode:** The framework can switch from hyperparameter search
+  to LLM-generated code modifications mid-experiment. The LLM reads the training script,
+  proposes a unified diff, the framework validates it, and the modified script is deployed
+  to Basilica. This enables the agent to evolve not just hyperparameters but the training
+  algorithm itself.
+
+- **Checkpoint/resume across failures:** The controller persists episode state (best score,
+  iteration index, experiment history) to a JSON checkpoint after every iteration. When
+  Basilica has capacity issues or the controller process restarts, the experiment resumes
+  from the last completed iteration without losing progress. This experiment survived 3
+  session interruptions.
+
+- **Keep/discard with versioned artifacts:** Iterations that beat the current best are
+  "kept" with full artifacts saved to `artifacts/versions/v####/`. Discarded iterations
+  are logged but their artifacts are not promoted. This creates a monotonically improving
+  artifact chain.
+
+## The autoresearch-rl Framework
+
+autoresearch-rl is an autonomous ML experiment controller that closes the loop between
+hypothesis, training, and evaluation. It is designed around three principles:
+
+### Pluggable Targets
+
+The framework separates "what to train" from "where to train" via the `TargetAdapter`
+protocol. The same experiment config can run locally (`CommandTarget`), against a remote
+API (`HttpTarget`), or on cloud GPU (`BasilicaTarget`) by changing one config field.
+This experiment uses `BasilicaTarget`, but the same GRPO training script works locally
+with `CommandTarget` for development and debugging.
+
+### Pluggable Policies
+
+The parameter proposal strategy is interchangeable:
+- `GridPolicy` / `RandomPolicy`: exhaustive or random search baselines
+- `LLMParamPolicy`: sends experiment history to an LLM and asks for the next hyperparameter
+  set. Maintains multi-turn conversation context so the LLM builds cumulative reasoning.
+- `LLMDiffPolicy`: asks the LLM to propose code modifications as unified diffs. Includes
+  correction retry -- if a diff fails validation, the error is sent back to the LLM for
+  a second attempt.
+- `HybridPolicy`: starts with param exploration, switches to code diffs when params stall.
+  Falls back to param mode if diff proposals fail consecutively.
+
+### Telemetry and Observability
+
+Every iteration emits structured JSONL events (proposals, outcomes, decisions) and appends
+to a TSV results ledger. The comparability system records hardware fingerprints and budget
+modes to ensure results across runs are scientifically comparable. The `progress_chart.py`
+script generates Karpathy-style visualization from this data.
+
 ## Differentiation from Karpathy's autoresearch
 
 | Aspect | Karpathy autoresearch | autoresearch-rl (this work) |
