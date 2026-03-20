@@ -28,8 +28,8 @@ policy:
   params:
     learning_rate: [0.000003, 0.000005, 0.00001]
     batch_size: [1, 2]
-    max_steps: [15, 30, 50]
-    num_generations: [2, 3]
+    max_steps: [50, 100, 150]
+    num_generations: [2, 3, 4]
     temperature: [0.8, 1.0]
   mutable_file: examples/basilica-grpo/train.py
   frozen_file: examples/basilica-grpo/prepare.py
@@ -44,7 +44,7 @@ policy:
 
 controller:
   max_wall_time_s: 28800
-  no_improve_limit: 10
+  no_improve_limit: 15
   failure_rate_limit: 0.85
   failure_window: 8
   checkpoint_path: artifacts/basilica-grpo/checkpoint.json
