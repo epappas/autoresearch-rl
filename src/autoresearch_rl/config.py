@@ -24,6 +24,7 @@ class BasilicaConfig(BaseModel):
 
 class TargetConfig(BaseModel):
     type: Literal["command", "http", "basilica"] = "command"
+    prepare_cmd: list[str] | None = None
     train_cmd: list[str] | None = None
     eval_cmd: list[str] | None = None
     url: str | None = None

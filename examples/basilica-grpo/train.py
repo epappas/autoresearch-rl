@@ -2,10 +2,11 @@
 
 Pure PyTorch implementation -- no TRL/accelerate dependency.
 Runs inside a Basilica deployment with params from AR_PARAMS_JSON.
+Reads prepared data from /app/data/ (produced by prepare.py pipeline step).
 
 Algorithm (DeepSeek-R1 GRPO):
   1. Sample prompts, generate G completions per prompt
-  2. Score each completion with reward function (from prepare.py)
+  2. Score each completion with reward function
   3. Compute per-prompt advantage: reward_i - mean(rewards)
   4. Compute clipped policy gradient loss
   5. Update model
@@ -19,21 +20,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
+from pathlib import Path
 
 import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from prepare import (
-    MODEL_NAME,
-    build_answer_map,
-    compute_reward,
-    evaluate_model,
-    format_prompt,
-    load_eval_data,
-    load_train_data,
-)
+DATA_DIR = os.environ.get("AR_DATA_DIR", "/app/data")
 
 
 def load_params() -> dict[str, object]:
@@ -42,6 +37,65 @@ def load_params() -> dict[str, object]:
         return json.loads(raw)
     except json.JSONDecodeError:
         return {}
+
+
+def load_data_config() -> dict:
+    config_path = Path(DATA_DIR) / "config.json"
+    if config_path.exists():
+        return json.loads(config_path.read_text(encoding="utf-8"))
+    return {"model_name": "Qwen/Qwen2.5-0.5B-Instruct"}
+
+
+def load_jsonl(name: str) -> list[dict]:
+    path = Path(DATA_DIR) / name
+    if not path.exists():
+        raise FileNotFoundError(f"Data file not found: {path}. Run prepare.py first.")
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def extract_answer(text: str) -> str | None:
+    """Extract the final numeric answer from a model response."""
+    patterns = [
+        r"####\s*([\d,]+(?:\.\d+)?)",
+        r"\\boxed\{([\d,]+(?:\.\d+)?)\}",
+        r"(?:answer|result|total)\s*(?:is|=|:)\s*\$?([\d,]+(?:\.\d+)?)",
+        r"([\d,]+(?:\.\d+)?)\s*$",
+    ]
+    for pat in patterns:
+        match = re.search(pat, text, re.IGNORECASE | re.MULTILINE)
+        if match:
+            return match.group(1).replace(",", "").replace("$", "").strip()
+    return None
+
+
+def compute_reward(completion: str, expected: str) -> float:
+    """Binary reward: 1.0 if extracted answer matches expected, 0.0 otherwise."""
+    pred = extract_answer(completion)
+    if pred and expected and pred.strip() == expected.strip():
+        return 1.0
+    return 0.0
+
+
+def evaluate_model(model, tokenizer, eval_data: list[dict], max_samples: int = 100) -> float:
+    """Evaluate pass@1 accuracy on prepared eval data."""
+    model.eval()
+    correct = 0
+    total = min(len(eval_data), max_samples)
+
+    for i in range(total):
+        prompt = eval_data[i]["prompt"]
+        expected = eval_data[i].get("expected", "")
+
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        with torch.no_grad():
+            outputs = model.generate(**inputs, max_new_tokens=512, do_sample=False)
+        response = tokenizer.decode(
+            outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True,
+        )
+        if compute_reward(response, expected) > 0:
+            correct += 1
+
+    return correct / max(total, 1)
 
 
 def generate_completions(
@@ -63,8 +117,7 @@ def generate_completions(
         log_probs = []
         for t, scores in enumerate(out.scores):
             lp = F.log_softmax(scores[0], dim=-1)
-            token_lp = lp[gen_ids[t]].item()
-            log_probs.append(token_lp)
+            log_probs.append(lp[gen_ids[t]].item())
 
         text = tokenizer.decode(gen_ids, skip_special_tokens=True)
         results.append((text, gen_ids, torch.tensor(log_probs, device=model.device)))
@@ -74,7 +127,7 @@ def generate_completions(
 
 def grpo_step(
     model, ref_model, tokenizer, optimizer,
-    prompt: str, ground_truth: str,
+    prompt: str, expected_answer: str,
     num_gen: int, max_new: int, temperature: float,
     clip_eps: float = 0.2, kl_coeff: float = 0.01,
 ) -> dict[str, float]:
@@ -83,7 +136,7 @@ def grpo_step(
         model, tokenizer, prompt, num_gen, max_new, temperature,
     )
 
-    rewards = [compute_reward(text, ground_truth) for text, _, _ in completions]
+    rewards = [compute_reward(text, expected_answer) for text, _, _ in completions]
     mean_reward = sum(rewards) / len(rewards)
     advantages = [r - mean_reward for r in rewards]
 
@@ -110,8 +163,8 @@ def grpo_step(
         with torch.no_grad():
             ref_outputs = ref_model(full_ids)
             ref_logits = ref_outputs.logits[0, input_len - 1:-1, :]
-            ref_log_probs = F.log_softmax(ref_logits, dim=-1)
-            ref_token_lp = ref_log_probs.gather(1, gen_ids.unsqueeze(1)).squeeze(1)
+            ref_lp = F.log_softmax(ref_logits, dim=-1)
+            ref_token_lp = ref_lp.gather(1, gen_ids.unsqueeze(1)).squeeze(1)
 
         min_len = min(len(token_log_probs), len(old_log_probs))
         ratio = torch.exp(token_log_probs[:min_len] - old_log_probs[:min_len])
@@ -120,7 +173,6 @@ def grpo_step(
         pg_loss = -torch.min(ratio * adv, clipped * adv).mean()
 
         kl = (token_log_probs[:min_len] - ref_token_lp[:min_len]).mean()
-
         total_loss = total_loss + pg_loss + kl_coeff * kl
         n_tokens += min_len
 
@@ -130,16 +182,13 @@ def grpo_step(
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
-    return {
-        "loss": total_loss.item(),
-        "reward": mean_reward,
-        "skipped": 0.0,
-    }
+    return {"loss": total_loss.item(), "reward": mean_reward, "skipped": 0.0}
 
 
 def main() -> None:
     t0 = time.time()
     params = load_params()
+    data_config = load_data_config()
 
     lr = float(params.get("learning_rate", 5e-6))
     max_steps = int(params.get("max_steps", 30))
@@ -147,52 +196,50 @@ def main() -> None:
     temperature = float(params.get("temperature", 1.0))
     max_completion = 256
 
+    model_name = data_config.get("model_name", "Qwen/Qwen2.5-0.5B-Instruct")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if torch.cuda.is_available():
         props = torch.cuda.get_device_properties(0)
         print(f"GPU: {props.name}, {props.total_memory / 1e9:.1f}GB", flush=True)
 
-    print(f"Loading model: {MODEL_NAME}", flush=True)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, padding_side="left")
+    print(f"Loading model: {model_name}", flush=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME, torch_dtype=torch.bfloat16,
+        model_name, torch_dtype=torch.bfloat16,
     ).to(device)
 
     ref_model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME, torch_dtype=torch.bfloat16,
+        model_name, torch_dtype=torch.bfloat16,
     ).to(device)
     ref_model.eval()
     for p in ref_model.parameters():
         p.requires_grad = False
 
-    train_data = load_train_data(max_samples=256)
-    eval_ds = load_eval_data(max_samples=200)
+    train_data = load_jsonl("train.jsonl")
+    eval_data = load_jsonl("eval.jsonl")
 
     print("Evaluating baseline...", flush=True)
-    baseline_score = evaluate_model(model, tokenizer, eval_ds, max_samples=50)
+    baseline_score = evaluate_model(model, tokenizer, eval_data, max_samples=50)
     print(f"[baseline] {baseline_score:.4f} pass@1", flush=True)
 
-    answer_map = build_answer_map(tokenizer=tokenizer)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
-
     print(f"[config] lr {lr}, steps {max_steps}, gen {num_generations}, temp {temperature}", flush=True)
 
     total_loss = 0.0
     total_reward = 0.0
-    n_samples = len(train_data)
+    n_train = len(train_data)
 
     for step in range(max_steps):
-        idx = step % n_samples
-        question = train_data[idx]["question"]
-        answer = train_data[idx]["answer"]
-        prompt = format_prompt(question, tokenizer=tokenizer)
+        item = train_data[step % n_train]
+        prompt = item["prompt"]
+        expected = item.get("expected", "")
 
         metrics = grpo_step(
             model, ref_model, tokenizer, optimizer,
-            prompt, answer,
+            prompt, expected,
             num_gen=num_generations,
             max_new=max_completion,
             temperature=temperature,
@@ -214,7 +261,7 @@ def main() -> None:
     print("Training complete.", flush=True)
 
     print("Evaluating trained model...", flush=True)
-    eval_score = evaluate_model(model, tokenizer, eval_ds, max_samples=100)
+    eval_score = evaluate_model(model, tokenizer, eval_data, max_samples=100)
     avg_loss = total_loss / max(max_steps, 1)
 
     print(f"eval_score={eval_score:.6f}", flush=True)

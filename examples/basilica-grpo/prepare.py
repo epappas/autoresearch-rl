@@ -1,37 +1,36 @@
-"""Frozen evaluation and data utilities for basilica-grpo.
+"""Frozen data preparation for basilica-grpo.
 
-This file defines the immutable boundary: model name, prompt formatting,
-answer extraction, reward computation, evaluation, and data loading.
+This script runs ONCE before the training loop as a pipeline step
+driven by config.yaml's prepare_cmd. It produces data files that
+train.py reads at each iteration.
+
+Outputs:
+    /app/data/train.jsonl    - formatted training prompts with answers
+    /app/data/eval.jsonl     - formatted eval prompts with answers
+    /app/data/config.json    - model name, prompt format metadata
+
 The RL loop modifies train.py but must not modify this file.
-
-train.py imports from this module:
-    from prepare import (
-        MODEL_NAME, format_prompt, extract_answer, compute_reward,
-        evaluate_model, load_train_data, load_eval_data, build_answer_map,
-    )
 """
 from __future__ import annotations
 
+import json
+import os
 import re
+import sys
+from pathlib import Path
 
 MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+DATA_DIR = os.environ.get("AR_DATA_DIR", "/app/data")
 
 
-def format_prompt(question: str, tokenizer=None) -> str:
-    """Format a GSM8K question. Uses chat template if tokenizer provided."""
-    content = (
+def format_prompt(question: str) -> str:
+    """Format a GSM8K question with explicit answer format instruction."""
+    return (
         "Solve the following math problem step by step. "
         "Show your reasoning, then give the final numeric answer "
         "after '####'.\n\n"
         f"Question: {question}"
     )
-    if tokenizer is not None and hasattr(tokenizer, "apply_chat_template"):
-        return tokenizer.apply_chat_template(
-            [{"role": "user", "content": content}],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-    return content + "\n\nAnswer:"
 
 
 def extract_answer(text: str) -> str | None:
@@ -56,70 +55,61 @@ def extract_answer(text: str) -> str | None:
     return None
 
 
-def compute_reward(completion: str, ground_truth: str) -> float:
-    """Binary reward: 1.0 if extracted answer matches, 0.0 otherwise."""
-    pred = extract_answer(completion)
-    expected = extract_answer(ground_truth)
-    if pred and expected and pred.strip() == expected.strip():
-        return 1.0
-    return 0.0
-
-
-def evaluate_model(model, tokenizer, eval_ds, max_samples: int = 100) -> float:
-    """Evaluate pass@1 accuracy on GSM8K test set with greedy decoding."""
-    import torch
-
-    model.eval()
-    correct = 0
-    total = min(len(eval_ds), max_samples)
-
-    for i in range(total):
-        prompt = format_prompt(eval_ds[i]["question"], tokenizer=tokenizer)
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        with torch.no_grad():
-            outputs = model.generate(**inputs, max_new_tokens=512, do_sample=False)
-        response = tokenizer.decode(
-            outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True,
-        )
-        if compute_reward(response, eval_ds[i]["answer"]) > 0:
-            correct += 1
-
-    return correct / max(total, 1)
-
-
-def load_train_data(max_samples: int = 500):
-    """Load the raw GSM8K training split (question + answer columns)."""
+def main() -> None:
     from datasets import load_dataset
 
-    ds = load_dataset("openai/gsm8k", "main", split="train")
-    if max_samples and len(ds) > max_samples:
-        ds = ds.select(range(max_samples))
-    return ds
+    out = Path(DATA_DIR)
+    out.mkdir(parents=True, exist_ok=True)
 
+    max_train = int(os.environ.get("AR_MAX_TRAIN", "500"))
+    max_eval = int(os.environ.get("AR_MAX_EVAL", "200"))
 
-def load_eval_data(max_samples: int = 200):
-    """Load the GSM8K test split for evaluation."""
-    from datasets import load_dataset
+    print(f"[prepare] loading GSM8K (train={max_train}, eval={max_eval})", flush=True)
 
-    ds = load_dataset("openai/gsm8k", "main", split="test")
-    if max_samples and len(ds) > max_samples:
-        ds = ds.select(range(max_samples))
-    return ds
+    train_ds = load_dataset("openai/gsm8k", "main", split="train")
+    test_ds = load_dataset("openai/gsm8k", "main", split="test")
 
+    # Write training data
+    train_path = out / "train.jsonl"
+    with open(train_path, "w", encoding="utf-8") as f:
+        for i, item in enumerate(train_ds):
+            if i >= max_train:
+                break
+            json.dump({
+                "prompt": format_prompt(item["question"]),
+                "question": item["question"],
+                "answer": item["answer"],
+                "expected": extract_answer(item["answer"]),
+            }, f)
+            f.write("\n")
 
-def build_answer_map(tokenizer=None) -> dict[str, str]:
-    """Build a prompt -> ground-truth answer map for the training split."""
-    from datasets import load_dataset
+    # Write eval data
+    eval_path = out / "eval.jsonl"
+    with open(eval_path, "w", encoding="utf-8") as f:
+        for i, item in enumerate(test_ds):
+            if i >= max_eval:
+                break
+            json.dump({
+                "prompt": format_prompt(item["question"]),
+                "question": item["question"],
+                "answer": item["answer"],
+                "expected": extract_answer(item["answer"]),
+            }, f)
+            f.write("\n")
 
-    ds = load_dataset("openai/gsm8k", "main", split="train")
-    return {
-        format_prompt(q, tokenizer=tokenizer): a
-        for q, a in zip(ds["question"], ds["answer"])
+    # Write config for train.py to read
+    config_path = out / "config.json"
+    config = {
+        "model_name": MODEL_NAME,
+        "train_samples": min(max_train, len(train_ds)),
+        "eval_samples": min(max_eval, len(test_ds)),
     }
+    config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+    print(f"[prepare] wrote {train_path} ({config['train_samples']} samples)", flush=True)
+    print(f"[prepare] wrote {eval_path} ({config['eval_samples']} samples)", flush=True)
+    print(f"[prepare] wrote {config_path}", flush=True)
 
 
 if __name__ == "__main__":
-    train = load_train_data(max_samples=5)
-    print(f"Train samples: {len(train)}")
-    print(f"Sample prompt:\n{format_prompt(train[0]['question'])}")
-    print(f"\nSample answer extraction: {extract_answer(train[0]['answer'])}")
+    main()
