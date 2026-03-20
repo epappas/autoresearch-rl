@@ -23,12 +23,15 @@ def _build_patch(path: Path, new_text: str) -> str:
 
 
 def _target_path(state: dict) -> Path:
-    workdir = str(state.get("workdir", "."))
     mutable = str(state.get("mutable_file", "train.py"))
     p = Path(mutable)
-    if p.is_absolute():
+    if p.is_absolute() or p.exists():
         return p
-    return Path(workdir) / p.name
+    workdir = str(state.get("workdir", "."))
+    candidate = Path(workdir) / mutable
+    if candidate.exists():
+        return candidate
+    return p
 
 
 def _recent_statuses(state: dict) -> list[str]:

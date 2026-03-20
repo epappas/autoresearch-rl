@@ -93,7 +93,7 @@ def _call_chat_api_messages(
     messages: list[dict],
     timeout: int,
     max_tokens: int = 1024,
-    max_retries: int = 3,
+    max_retries: int = 5,
 ) -> str:
     import time as _time
 
@@ -122,9 +122,24 @@ def _call_chat_api_messages(
                 body = json.loads(resp.read().decode("utf-8"))
             return body["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < max_retries:
-                wait = min(15 * (attempt + 1), 60)
-                logger.warning("LLM API rate-limited (429), retrying in %ds", wait)
+            if e.code in (429, 502, 503) and attempt < max_retries:
+                base = min(10 * (2 ** attempt), 90)
+                jitter = random.uniform(0, base * 0.3)
+                wait = base + jitter
+                logger.warning(
+                    "LLM API error %d, retry %d/%d in %.0fs",
+                    e.code, attempt + 1, max_retries, wait,
+                )
+                _time.sleep(wait)
+                continue
+            raise
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            if attempt < max_retries:
+                wait = min(10 * (2 ** attempt), 90)
+                logger.warning(
+                    "LLM API network error, retry %d/%d in %.0fs: %s",
+                    attempt + 1, max_retries, wait, e,
+                )
                 _time.sleep(wait)
                 continue
             raise
