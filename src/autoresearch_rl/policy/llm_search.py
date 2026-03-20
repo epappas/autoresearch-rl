@@ -93,7 +93,10 @@ def _call_chat_api_messages(
     messages: list[dict],
     timeout: int,
     max_tokens: int = 1024,
+    max_retries: int = 3,
 ) -> str:
+    import time as _time
+
     endpoint = url.rstrip("/") + "/chat/completions"
     payload = {
         "model": model,
@@ -103,18 +106,30 @@ def _call_chat_api_messages(
         "max_tokens": max_tokens,
     }
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        endpoint,
-        data=data,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.loads(resp.read().decode("utf-8"))
-    return body["choices"][0]["message"]["content"]
+
+    for attempt in range(max_retries + 1):
+        req = urllib.request.Request(
+            endpoint,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            return body["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < max_retries:
+                wait = min(15 * (attempt + 1), 60)
+                logger.warning("LLM API rate-limited (429), retrying in %ds", wait)
+                _time.sleep(wait)
+                continue
+            raise
+
+    raise RuntimeError("max retries exhausted")
 
 
 def _call_chat_api(
