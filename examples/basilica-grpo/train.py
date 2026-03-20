@@ -1,32 +1,37 @@
-"""GRPO fine-tuning of Qwen2.5-0.5B-Instruct on GSM8K via TRL.
+"""GRPO fine-tuning of Qwen2.5-0.5B-Instruct on GSM8K.
 
-This script runs inside a Basilica deployment. It reads hyperparameters
-from AR_PARAMS_JSON env var, trains the model, evaluates, and prints
-metrics to stdout for the autoresearch-rl controller to parse.
+Pure PyTorch implementation — no TRL/accelerate dependency.
+Runs inside a Basilica deployment with params from AR_PARAMS_JSON.
 
-Metrics output format (parsed by autoresearch-rl):
+Algorithm (DeepSeek-R1 GRPO):
+  1. Sample prompts, generate G completions per prompt
+  2. Score each completion with reward function
+  3. Compute per-prompt advantage: reward_i - mean(rewards)
+  4. Compute clipped policy gradient loss
+  5. Update model
+
+Metrics output (parsed by autoresearch-rl):
     eval_score=0.5500
-    val_bpb=0.4500
     loss=0.3200
     training_seconds=580.0
 """
 from __future__ import annotations
 
 import json
+import math
 import os
+import re
 import time
 
 import torch
+import torch.nn.functional as F
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from trl import GRPOConfig, GRPOTrainer
-
 
 MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 
 
 def load_params() -> dict[str, object]:
-    """Load hyperparameters from AR_PARAMS_JSON env var."""
     raw = os.environ.get("AR_PARAMS_JSON", "{}")
     try:
         return json.loads(raw)
@@ -34,36 +39,15 @@ def load_params() -> dict[str, object]:
         return {}
 
 
-def build_dataset(max_samples: int = 500):
-    """Load GSM8K training split."""
-    ds = load_dataset("openai/gsm8k", "main", split="train")
-    if max_samples and len(ds) > max_samples:
-        ds = ds.select(range(max_samples))
-    return ds.map(
-        lambda x: {"prompt": format_prompt(x["question"])},
-        remove_columns=ds.column_names,
-    )
-
-
-def build_eval_dataset(max_samples: int = 200):
-    """Load GSM8K test split for evaluation."""
-    ds = load_dataset("openai/gsm8k", "main", split="test")
-    if max_samples and len(ds) > max_samples:
-        ds = ds.select(range(max_samples))
-    return ds
-
-
 def format_prompt(question: str) -> str:
     return (
-        f"Solve the following math problem step by step.\n\n"
+        "Solve the following math problem step by step.\n\n"
         f"Question: {question}\n\n"
-        f"Answer:"
+        "Answer:"
     )
 
 
 def extract_answer(text: str) -> str | None:
-    """Extract the final numeric answer from a GSM8K-style response."""
-    import re
     patterns = [
         r"####\s*([\d,.-]+)",
         r"(?:answer|result)\s*(?:is|=)\s*([\d,.-]+)",
@@ -76,52 +60,131 @@ def extract_answer(text: str) -> str | None:
     return None
 
 
-def gsm8k_reward(completions: list[str], ground_truths: list[str]) -> list[float]:
-    """Compute reward: 1.0 if extracted answer matches ground truth, else 0.0."""
-    rewards = []
-    for completion, gt in zip(completions, ground_truths):
-        pred = extract_answer(completion)
-        expected = extract_answer(gt)
-        if pred is not None and expected is not None:
-            rewards.append(1.0 if pred.strip() == expected.strip() else 0.0)
-        else:
-            rewards.append(0.0)
-    return rewards
+def compute_reward(completion: str, ground_truth: str) -> float:
+    pred = extract_answer(completion)
+    expected = extract_answer(ground_truth)
+    if pred and expected and pred.strip() == expected.strip():
+        return 1.0
+    return 0.0
 
 
 def evaluate_model(model, tokenizer, eval_ds, max_samples: int = 100) -> float:
-    """Evaluate pass@1 on GSM8K test set."""
     model.eval()
     correct = 0
     total = min(len(eval_ds), max_samples)
 
     for i in range(total):
-        question = eval_ds[i]["question"]
-        ground_truth = eval_ds[i]["answer"]
-
-        prompt = format_prompt(question)
+        prompt = format_prompt(eval_ds[i]["question"])
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-
         with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=256,
-                temperature=0.0,
-                do_sample=False,
-            )
-
+            outputs = model.generate(**inputs, max_new_tokens=256, do_sample=False)
         response = tokenizer.decode(
-            outputs[0][inputs["input_ids"].shape[1]:],
-            skip_special_tokens=True,
+            outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True,
         )
-        pred = extract_answer(response)
-        expected = extract_answer(ground_truth)
-
-        if pred is not None and expected is not None:
-            if pred.strip() == expected.strip():
-                correct += 1
+        if compute_reward(response, eval_ds[i]["answer"]) > 0:
+            correct += 1
 
     return correct / max(total, 1)
+
+
+def generate_completions(
+    model, tokenizer, prompt: str, num_gen: int, max_new: int, temperature: float,
+) -> list[tuple[str, torch.Tensor, torch.Tensor]]:
+    """Generate completions and return (text, token_ids, log_probs)."""
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    input_len = inputs["input_ids"].shape[1]
+    results = []
+
+    for _ in range(num_gen):
+        with torch.no_grad():
+            out = model.generate(
+                **inputs, max_new_tokens=max_new,
+                do_sample=True, temperature=max(temperature, 0.01),
+                return_dict_in_generate=True, output_scores=True,
+            )
+        gen_ids = out.sequences[0, input_len:]
+        # Compute log probs from scores
+        log_probs = []
+        for t, scores in enumerate(out.scores):
+            lp = F.log_softmax(scores[0], dim=-1)
+            token_lp = lp[gen_ids[t]].item()
+            log_probs.append(token_lp)
+
+        text = tokenizer.decode(gen_ids, skip_special_tokens=True)
+        results.append((text, gen_ids, torch.tensor(log_probs, device=model.device)))
+
+    return results
+
+
+def grpo_step(
+    model, ref_model, tokenizer, optimizer,
+    prompt: str, ground_truth: str,
+    num_gen: int, max_new: int, temperature: float,
+    clip_eps: float = 0.2, kl_coeff: float = 0.01,
+) -> dict[str, float]:
+    """One GRPO update step on a single prompt."""
+    # Generate completions with current policy (no grad for generation)
+    completions = generate_completions(
+        model, tokenizer, prompt, num_gen, max_new, temperature,
+    )
+
+    # Compute rewards
+    rewards = [compute_reward(text, ground_truth) for text, _, _ in completions]
+    mean_reward = sum(rewards) / len(rewards)
+    advantages = [r - mean_reward for r in rewards]
+
+    if all(a == 0.0 for a in advantages):
+        return {"loss": 0.0, "reward": mean_reward, "skipped": 1.0}
+
+    # Compute policy gradient loss
+    model.train()
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    input_len = inputs["input_ids"].shape[1]
+
+    total_loss = torch.tensor(0.0, device=model.device)
+    n_tokens = 0
+
+    for (text, gen_ids, old_log_probs), advantage in zip(completions, advantages):
+        if len(gen_ids) == 0:
+            continue
+
+        full_ids = torch.cat([inputs["input_ids"][0], gen_ids]).unsqueeze(0)
+        outputs = model(full_ids)
+        logits = outputs.logits[0, input_len - 1:-1, :]  # shift by 1
+        new_log_probs = F.log_softmax(logits, dim=-1)
+        token_log_probs = new_log_probs.gather(1, gen_ids.unsqueeze(1)).squeeze(1)
+
+        # Also compute ref model log probs for KL penalty
+        with torch.no_grad():
+            ref_outputs = ref_model(full_ids)
+            ref_logits = ref_outputs.logits[0, input_len - 1:-1, :]
+            ref_log_probs = F.log_softmax(ref_logits, dim=-1)
+            ref_token_lp = ref_log_probs.gather(1, gen_ids.unsqueeze(1)).squeeze(1)
+
+        # Clipped policy ratio
+        min_len = min(len(token_log_probs), len(old_log_probs))
+        ratio = torch.exp(token_log_probs[:min_len] - old_log_probs[:min_len])
+        clipped = torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps)
+        adv = torch.tensor(advantage, device=model.device)
+        pg_loss = -torch.min(ratio * adv, clipped * adv).mean()
+
+        # KL penalty
+        kl = (token_log_probs[:min_len] - ref_token_lp[:min_len]).mean()
+
+        total_loss = total_loss + pg_loss + kl_coeff * kl
+        n_tokens += min_len
+
+    if n_tokens > 0:
+        optimizer.zero_grad()
+        total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+
+    return {
+        "loss": total_loss.item(),
+        "reward": mean_reward,
+        "skipped": 0.0,
+    }
 
 
 def main() -> None:
@@ -129,97 +192,95 @@ def main() -> None:
     params = load_params()
 
     lr = float(params.get("learning_rate", 5e-6))
-    batch_size = int(params.get("batch_size", 4))
-    max_steps = int(params.get("max_steps", 20))
-    grad_clip = float(params.get("grad_clip", 1.0))
-    num_generations = int(params.get("num_generations", 4))
+    max_steps = int(params.get("max_steps", 30))
+    num_generations = int(params.get("num_generations", 2))
     temperature = float(params.get("temperature", 1.0))
+    max_completion = 128
 
-    print(f"Loading model: {MODEL_NAME}")
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        props = torch.cuda.get_device_properties(0)
+        print(f"GPU: {props.name}, {props.total_memory / 1e9:.1f}GB", flush=True)
+
+    print(f"Loading model: {MODEL_NAME}", flush=True)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, padding_side="left")
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
+        MODEL_NAME, torch_dtype=torch.bfloat16,
+    ).to(device)
 
-    print("Loading GSM8K dataset...")
-    train_ds = build_dataset(max_samples=500)
-    eval_ds = build_eval_dataset(max_samples=100)
+    # Reference model (frozen copy for KL penalty)
+    ref_model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME, torch_dtype=torch.bfloat16,
+    ).to(device)
+    ref_model.eval()
+    for p in ref_model.parameters():
+        p.requires_grad = False
 
-    # Evaluate baseline before training
-    print("Evaluating baseline...")
+    # Dataset
+    train_data = load_dataset("openai/gsm8k", "main", split="train")
+    eval_ds = load_dataset("openai/gsm8k", "main", split="test")
+
+    print("Evaluating baseline...", flush=True)
     baseline_score = evaluate_model(model, tokenizer, eval_ds, max_samples=50)
-    print(f"baseline_score={baseline_score:.6f}")
+    print(f"[baseline] {baseline_score:.4f} pass@1", flush=True)
 
-    config = GRPOConfig(
-        output_dir="/tmp/grpo_output",
-        learning_rate=lr,
-        per_device_train_batch_size=batch_size,
-        num_train_epochs=1,
-        max_steps=max_steps,
-        max_grad_norm=grad_clip,
-        num_generations=num_generations,
-        temperature=temperature,
-        logging_steps=5,
-        save_strategy="no",
-        report_to=[],
-        bf16=True,
-        remove_unused_columns=False,
-    )
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
 
-    # Define reward function for GRPO
-    train_answers = load_dataset("openai/gsm8k", "main", split="train")
-    answer_map = {
-        format_prompt(q): a
-        for q, a in zip(train_answers["question"], train_answers["answer"])
-    }
+    print(f"[config] lr {lr}, steps {max_steps}, gen {num_generations}, temp {temperature}", flush=True)
 
-    def reward_fn(completions: list[str], prompts: list[str]) -> list[float]:
-        rewards = []
-        for comp, prompt in zip(completions, prompts):
-            gt = answer_map.get(prompt, "")
-            pred = extract_answer(comp)
-            expected = extract_answer(gt)
-            if pred and expected and pred.strip() == expected.strip():
-                rewards.append(1.0)
-            else:
-                rewards.append(0.0)
-        return rewards
+    total_loss = 0.0
+    total_reward = 0.0
+    n_samples = len(train_data)
 
-    print(f"Starting GRPO training: lr={lr}, batch={batch_size}, "
-          f"steps={max_steps}, generations={num_generations}")
+    for step in range(max_steps):
+        idx = step % n_samples
+        question = train_data[idx]["question"]
+        answer = train_data[idx]["answer"]
+        prompt = format_prompt(question)
 
-    trainer = GRPOTrainer(
-        model=model,
-        config=config,
-        train_dataset=train_ds,
-        processing_class=tokenizer,
-        reward_funcs=reward_fn,
-    )
+        metrics = grpo_step(
+            model, ref_model, tokenizer, optimizer,
+            prompt, answer,
+            num_gen=num_generations,
+            max_new=max_completion,
+            temperature=temperature,
+        )
 
-    trainer.train()
+        total_loss += metrics["loss"]
+        total_reward += metrics["reward"]
+
+        if (step + 1) % 5 == 0 or step == 0:
+            avg_loss = total_loss / (step + 1)
+            avg_reward = total_reward / (step + 1)
+            print(
+                f"[step {step + 1}/{max_steps}] "
+                f"avg_loss {avg_loss:.4f}, avg_reward {avg_reward:.4f}",
+                flush=True,
+            )
+
     training_seconds = time.time() - t0
+    print("Training complete.", flush=True)
 
-    # Evaluate after training
-    print("Evaluating trained model...")
+    # Final evaluation
+    print("Evaluating trained model...", flush=True)
     eval_score = evaluate_model(model, tokenizer, eval_ds, max_samples=100)
+    avg_loss = total_loss / max(max_steps, 1)
 
-    # val_bpb = 1 - eval_score (lower is better, for compatibility)
-    val_bpb = 1.0 - eval_score
-    loss = float(trainer.state.log_history[-1].get("loss", 0.0)) if trainer.state.log_history else 0.0
-
-    # Print metrics in parseable format
-    print(f"eval_score={eval_score:.6f}")
-    print(f"val_bpb={val_bpb:.6f}")
-    print(f"loss={loss:.6f}")
-    print(f"training_seconds={training_seconds:.1f}")
-    print(f"baseline={baseline_score:.6f}")
-    print(f"improvement={eval_score - baseline_score:.6f}")
+    print(f"eval_score={eval_score:.6f}", flush=True)
+    print(f"loss={avg_loss:.6f}", flush=True)
+    print(f"training_seconds={training_seconds:.1f}", flush=True)
+    print(f"baseline={baseline_score:.6f}", flush=True)
+    print(f"improvement={eval_score - baseline_score:.6f}", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        print(f"FATAL: {exc}", flush=True)
+        raise SystemExit(1)

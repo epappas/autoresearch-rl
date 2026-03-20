@@ -3,48 +3,55 @@ name: basilica-grpo-qwen
 program_path: examples/basilica-grpo/program.md
 
 objective:
-  metric: val_bpb
-  direction: min
+  metric: eval_score
+  direction: max
 
 target:
   type: basilica
   train_cmd:
     - python3
     - /app/train.py
-  timeout_s: 3600
+  timeout_s: 2400
   basilica:
     image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
     gpu_count: 1
     gpu_models: ["A100", "H100"]
-    memory: "32Gi"
+    memory: "48Gi"
     cpu: "8"
     storage: /data
-    ttl_seconds: 3600
+    ttl_seconds: 2700
     min_gpu_memory_gb: 24
+    setup_cmd: "pip install --no-cache-dir transformers==4.47.1 datasets==3.2.0 accelerate==0.34.2 scipy && python3 -c \"from transformers import AutoModelForCausalLM, AutoTokenizer; AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-0.5B-Instruct'); AutoTokenizer.from_pretrained('Qwen/Qwen2.5-0.5B-Instruct')\""
 
 policy:
-  type: llm
+  type: hybrid
   params:
     learning_rate: [0.000003, 0.000005, 0.00001]
-    batch_size: [4, 8]
-    max_steps: [20, 30]
-    num_generations: [4, 8]
+    batch_size: [1, 2]
+    max_steps: [15, 30, 50]
+    num_generations: [2, 3]
     temperature: [0.8, 1.0]
+  mutable_file: examples/basilica-grpo/train.py
+  frozen_file: examples/basilica-grpo/prepare.py
+  program_file: examples/basilica-grpo/program.md
   llm_api_url: "https://llm.chutes.ai/v1"
   llm_model: "deepseek-ai/DeepSeek-V3-0324"
   llm_api_key_env: "CHUTES_API_KEY"
-  llm_timeout_s: 60
+  llm_timeout_s: 90
+  hybrid_param_explore_iters: 8
+  hybrid_stall_threshold: 4
+  hybrid_diff_failure_limit: 3
 
 controller:
-  max_wall_time_s: 14400
-  no_improve_limit: 5
-  failure_rate_limit: 0.8
-  failure_window: 5
+  max_wall_time_s: 28800
+  no_improve_limit: 10
+  failure_rate_limit: 0.85
+  failure_window: 8
   checkpoint_path: artifacts/basilica-grpo/checkpoint.json
 
 comparability:
   budget_mode: fixed_wallclock
-  expected_budget_s: 3600
+  expected_budget_s: 28800
   strict: false
 
 telemetry:
