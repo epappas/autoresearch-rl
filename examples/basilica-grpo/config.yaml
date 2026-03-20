@@ -8,6 +8,9 @@ objective:
 
 target:
   type: basilica
+  prepare_cmd:
+    - python3
+    - /app/prepare.py
   train_cmd:
     - python3
     - /app/train.py

@@ -22,4 +22,5 @@ def build_target(cfg: TargetConfig) -> TargetAdapter:
     return CommandTarget(
         train_cmd=cfg.train_cmd, eval_cmd=cfg.eval_cmd,
         workdir=cfg.workdir, timeout_s=cfg.timeout_s,
+        prepare_cmd=cfg.prepare_cmd,
     )

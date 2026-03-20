@@ -148,7 +148,12 @@ class BasilicaTarget:
             env["HF_TOKEN"] = hf_token
 
         user_cmd = cmd or ["python3", "train.py"]
-        bootstrap = self._build_bootstrap_cmd(user_cmd, setup_cmd=self._bcfg.setup_cmd)
+        # Chain: setup_cmd (pip install etc) -> prepare_cmd -> train_cmd
+        setup = self._bcfg.setup_cmd or ""
+        if self._cfg.prepare_cmd:
+            prepare = " ".join(self._cfg.prepare_cmd)
+            setup = f"{setup} && {prepare}" if setup else prepare
+        bootstrap = self._build_bootstrap_cmd(user_cmd, setup_cmd=setup or None)
 
         health_check = HealthCheckConfig(
             liveness=ProbeConfig(

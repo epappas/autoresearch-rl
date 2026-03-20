@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.target.interface import RunOutcome, TargetAdapter
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -17,6 +20,26 @@ class CommandTarget(TargetAdapter):
     eval_cmd: list[str] | None
     workdir: str
     timeout_s: int
+    prepare_cmd: list[str] | None = None
+    _prepared: bool = field(default=False, init=False, repr=False)
+
+    def _ensure_prepared(self) -> None:
+        if self._prepared or not self.prepare_cmd:
+            return
+        logger.info("Running prepare_cmd: %s", self.prepare_cmd)
+        cp = subprocess.run(
+            self.prepare_cmd,
+            cwd=self.workdir,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout_s,
+            check=False,
+        )
+        if cp.returncode != 0:
+            logger.error("prepare_cmd failed (rc=%d): %s", cp.returncode, cp.stderr[:500])
+            raise RuntimeError(f"prepare_cmd failed: {cp.stderr[:200]}")
+        logger.info("prepare_cmd completed")
+        self._prepared = True
 
     def _run(self, *, cmd: list[str], run_dir: str, params: dict[str, object]) -> RunOutcome:
         env = os.environ.copy()
@@ -55,9 +78,13 @@ class CommandTarget(TargetAdapter):
                     except ValueError:
                         continue
         status = "ok" if cp.returncode == 0 else "failed"
-        return RunOutcome(status=status, metrics=metrics_dict, stdout=stdout, stderr=stderr, elapsed_s=elapsed, run_dir=run_dir)
+        return RunOutcome(
+            status=status, metrics=metrics_dict, stdout=stdout,
+            stderr=stderr, elapsed_s=elapsed, run_dir=run_dir,
+        )
 
     def run(self, *, run_dir: str, params: dict[str, object]) -> RunOutcome:
+        self._ensure_prepared()
         return self._run(cmd=self.train_cmd, run_dir=run_dir, params=params)
 
     def eval(self, *, run_dir: str, params: dict[str, object]) -> RunOutcome:
