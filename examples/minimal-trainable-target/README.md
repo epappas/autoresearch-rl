@@ -27,16 +27,16 @@ bash examples/minimal-trainable-target/run.sh --override policy.type=grid \
 ```bash
 # Check experiment state (JSON output — agent-readable)
 uv run autoresearch-rl status \
-  --config examples/minimal-trainable-target/config.yaml --last 5
+  examples/minimal-trainable-target/config.yaml --last 5
 
 # Inject a code diff and run one iteration
 uv run autoresearch-rl run-one \
-  --config examples/minimal-trainable-target/config.yaml \
+  examples/minimal-trainable-target/config.yaml \
   --diff path/to/change.patch
 
 # Inject explicit hyperparameters and run one iteration
 uv run autoresearch-rl run-one \
-  --config examples/minimal-trainable-target/config.yaml \
+  examples/minimal-trainable-target/config.yaml \
   --params '{"learning_rate": 0.0026}'
 ```
 

@@ -29,16 +29,16 @@ The controller exposes `status` and `run-one` for agent-driven loops:
 ```bash
 # Check experiment state (JSON output — agent-readable)
 uv run autoresearch-rl status \
-  --config examples/autoresearch-like/config.yaml --last 5
+  examples/autoresearch-like/config.yaml --last 5
 
 # Inject a pre-computed code diff and run one iteration
 uv run autoresearch-rl run-one \
-  --config examples/autoresearch-like/config.yaml \
+  examples/autoresearch-like/config.yaml \
   --diff path/to/change.patch
 
 # Inject explicit hyperparameters and run one iteration
 uv run autoresearch-rl run-one \
-  --config examples/autoresearch-like/config.yaml \
+  examples/autoresearch-like/config.yaml \
   --params '{"learning_rate": 0.0026, "grad_clip": 0.85}'
 ```
 

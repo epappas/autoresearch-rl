@@ -100,10 +100,10 @@ controller:
 ## CLI
 
 ```bash
-uv run autoresearch-rl --config config.yaml                    # run the loop
-uv run autoresearch-rl validate --config config.yaml           # validate config
-uv run autoresearch-rl status --config config.yaml --last 5    # check state (JSON)
-uv run autoresearch-rl run-one --config config.yaml \
+uv run autoresearch-rl config.yaml                             # run the loop
+uv run autoresearch-rl validate config.yaml                    # validate config
+uv run autoresearch-rl status config.yaml --last 5             # check state (JSON)
+uv run autoresearch-rl run-one config.yaml \
   --params '{"learning_rate": 5e-6}'                           # single iteration
 ```
 

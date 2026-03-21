@@ -45,7 +45,7 @@ def test_cli_run_with_program_path(tmp_path: Path):
 
     with patch("autoresearch_rl.cli.run_continuous", side_effect=spy_run_continuous):
         runner = CliRunner()
-        result = runner.invoke(app, ["--config", str(cfg_path)])
+        result = runner.invoke(app, ["run", str(cfg_path)])
 
     assert result.exit_code == 0
     assert len(captured_program) == 1
@@ -77,6 +77,6 @@ def test_cli_run_smoke(tmp_path: Path):
     cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
     runner = CliRunner()
-    result = runner.invoke(app, ["--config", str(cfg_path)])
+    result = runner.invoke(app, ["run", str(cfg_path)])
     assert result.exit_code == 0
     assert "iterations" in result.stdout
