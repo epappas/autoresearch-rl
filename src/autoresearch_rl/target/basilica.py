@@ -359,14 +359,27 @@ class BasilicaTarget:
         except Exception as exc:
             logger.warning("Cleanup failed for %s: %s", name, exc)
 
+    # Metric keys that indicate training has completed and real results are available.
+    # The adapter only returns "ok" when at least one of these is found in the logs.
+    _KNOWN_METRIC_KEYS = frozenset({
+        "eval_score", "val_bpb", "loss", "accuracy", "f1",
+        "training_seconds", "improvement", "reward",
+    })
+
     @staticmethod
     def _parse_metrics(logs: str) -> dict[str, float]:
-        """Extract key=value metrics from log text."""
-        metrics: dict[str, float] = {}
+        """Extract key=value metrics from log text.
+
+        Only returns metrics if at least one key matches _KNOWN_METRIC_KEYS,
+        to avoid false positives from library warnings or preparation output.
+        """
+        raw: dict[str, float] = {}
         for match in re.finditer(r"(\w+)=([\d.eE+-]+)", logs):
             key = match.group(1).lower()
             try:
-                metrics[key] = float(match.group(2))
+                raw[key] = float(match.group(2))
             except ValueError:
                 continue
-        return metrics
+        if not raw.keys() & BasilicaTarget._KNOWN_METRIC_KEYS:
+            return {}
+        return raw
