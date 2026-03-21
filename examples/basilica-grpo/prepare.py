@@ -64,7 +64,7 @@ def main() -> None:
     max_train = int(os.environ.get("AR_MAX_TRAIN", "500"))
     max_eval = int(os.environ.get("AR_MAX_EVAL", "200"))
 
-    print(f"[prepare] loading GSM8K (train={max_train}, eval={max_eval})", flush=True)
+    print(f"[prepare] loading GSM8K, {max_train} train / {max_eval} eval", flush=True)
 
     train_ds = load_dataset("openai/gsm8k", "main", split="train")
     test_ds = load_dataset("openai/gsm8k", "main", split="test")
@@ -106,8 +106,8 @@ def main() -> None:
     }
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
-    print(f"[prepare] wrote {train_path} ({config['train_samples']} samples)", flush=True)
-    print(f"[prepare] wrote {eval_path} ({config['eval_samples']} samples)", flush=True)
+    print(f"[prepare] wrote {train_path}, {config['train_samples']} samples", flush=True)
+    print(f"[prepare] wrote {eval_path}, {config['eval_samples']} samples", flush=True)
     print(f"[prepare] wrote {config_path}", flush=True)
 
 

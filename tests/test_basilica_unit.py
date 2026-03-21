@@ -54,9 +54,9 @@ class TestParseMetrics:
         assert "val_bpb" in metrics
 
     def test_negative_values(self) -> None:
-        logs = "delta=-0.05"
+        logs = "improvement=-0.05"
         metrics = BasilicaTarget._parse_metrics(logs)
-        assert abs(metrics["delta"] - (-0.05)) < 1e-6
+        assert abs(metrics["improvement"] - (-0.05)) < 1e-6
 
 
 class TestExtractMessages:
