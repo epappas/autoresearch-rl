@@ -45,21 +45,33 @@ python3 examples/basilica-grpo/deploy.py --policy grid
 
 ## How it works
 
-1. The `llm` policy proposes hyperparameters using multi-turn conversation, incorporating the
-   full iteration history into each API call.
+1. The `hybrid` policy starts with LLM-guided hyperparameter search, then switches to code
+   diffs when param exploration stalls.
 2. For each iteration, a Basilica deployment is created with a GPU container.
-3. The container runs `train.py` which loads Qwen2.5-0.5B, trains with GRPO on GSM8K,
-   evaluates pass@1, and prints metrics to stdout.
-4. The controller parses metrics from deployment logs and applies keep/discard.
-5. `program.md` provides the task spec to the LLM as persistent context.
+3. Inside the container: `prepare.py` runs first (via `prepare_cmd`) to download GSM8K data
+   and write formatted JSONL files to `/app/data/`.
+4. Then `train.py` reads the prepared data, trains with GRPO, evaluates pass@1, and prints
+   metrics to stdout.
+5. The controller parses metrics from deployment logs and applies keep/discard.
+
+## Pipeline
+
+```
+prepare.py  -->  /app/data/{train,eval}.jsonl  -->  train.py  -->  [metrics]
+(runs once)       (frozen data boundary)            (each iter)    (keep/discard)
+```
+
+`prepare.py` is a config-driven pipeline step (`prepare_cmd` in config.yaml). It runs once
+per container before `train.py`. There is no Python import between them -- they communicate
+via JSONL data files on disk.
 
 ## Files
 
 | File | Role |
 |------|------|
-| `train.py` | GRPO training script |
-| `prepare.py` | Frozen — dataset loading and prompt formatting |
-| `program.md` | Task spec provided to the LLM |
+| `train.py` | Mutable -- GRPO training, modified by LLM in diff mode |
+| `prepare.py` | Frozen -- pipeline step, produces data files via `prepare_cmd` |
+| `program.md` | Task spec provided to the LLM as context |
 
 ## GPU Requirements
 

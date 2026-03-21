@@ -39,9 +39,12 @@ Runtime path: `cli.py` -> `controller/continuous.py` -> `target/*` -> `telemetry
   - `HttpTarget`: calls remote endpoints (vLLM/sglang)
   - `BasilicaTarget` (`target/basilica.py`): deploys each training iteration as a containerized GPU job on Basilica cloud; handles health-check bootstrapping, log polling, and cleanup
   - Registry in `target/registry.py` builds the correct adapter from config
+- **Pipeline step** (`prepare_cmd`): Optional config field. When set, the target runs `prepare_cmd` once before the iteration loop (CommandTarget) or once per container before `train_cmd` (BasilicaTarget). This is the frozen data/evaluation boundary — `prepare.py` produces data files that `train.py` reads. No Python import between them.
 - **Policy**: Parameter proposal strategies. Five types across two modules:
   - `policy/search.py`: `GridPolicy` (exhaustive combos), `RandomPolicy` (seeded uniform), `StaticPolicy` (no overrides)
-  - `policy/llm_search.py`: `LLMParamPolicy` calls any OpenAI-compatible chat API to propose params from full experiment history; falls back to seeded random on failure; zero extra dependencies (stdlib `urllib`)
+  - `policy/llm_search.py`: `LLMParamPolicy` calls any OpenAI-compatible chat API to propose params from full experiment history; falls back to seeded random on failure; retries on 429/502/503 with exponential backoff + jitter
+  - `policy/llm_diff.py`: `LLMDiffPolicy` proposes code modifications as unified diffs with correction retry on validation failure
+  - `policy/hybrid.py`: `HybridPolicy` starts with param exploration, switches to code diffs when params stall, falls back to param mode on consecutive diff failures
   - `policy/learned.py` + `policy/learned_search.py`: learned policy using PPO-style updates
 - **Controller** (`controller/continuous.py`): Orchestrates the loop with stop guards (wall time, no-improvement streak, failure rate). Each iteration: propose params -> train -> eval -> keep/discard -> emit telemetry
 - **Config** (`config.py`): Pydantic models for all config sections. YAML config validated via `RunConfig.model_validate()`

@@ -54,12 +54,23 @@ python3 examples/minimal-trainable-target/deploy.py
 - **Keep/discard**: accepted diffs persist; discarded ones are rolled back.
 - Each iteration completes in milliseconds — ideal for rapid loop validation.
 
+## Pipeline
+
+```
+prepare.py  -->  [evaluation oracle]  -->  train.py  -->  [metrics]
+(runs once)       (frozen boundary)       (each iter)    (keep/discard)
+```
+
+`prepare.py` is a config-driven pipeline step (`prepare_cmd` in config.yaml). It runs once
+before the iteration loop. `train.py` reads parameters from env vars and is modified by the
+LLM each iteration. No Python import between them.
+
 ## Files
 
 | File | Role |
 |------|------|
-| `train.py` | Mutable — the LLM modifies this |
-| `prepare.py` | Frozen — evaluation oracle, not modified |
+| `train.py` | Mutable -- the LLM modifies this each iteration |
+| `prepare.py` | Frozen -- pipeline step, runs once via `prepare_cmd` |
 | `program.md` | Task spec provided to the LLM as context |
 
 ## Purpose

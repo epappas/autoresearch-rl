@@ -64,12 +64,23 @@ python3 examples/autoresearch-like/deploy.py --policy grid
   rolled back before the next iteration.
 - **Contract**: diffs may only touch `train.py` (mutable); `prepare.py` is frozen.
 
+## Pipeline
+
+```
+prepare.py  -->  [data/config on disk]  -->  train.py  -->  [metrics]
+(runs once)       (frozen boundary)         (each iter)    (keep/discard)
+```
+
+`prepare.py` is a config-driven pipeline step (`prepare_cmd` in config.yaml). It runs once
+before the iteration loop and produces data files that `train.py` reads. There is no Python
+import between them -- they communicate via the filesystem.
+
 ## Files
 
 | File | Role |
 |------|------|
-| `train.py` | Mutable — the LLM modifies this |
-| `prepare.py` | Frozen — data infrastructure, not modified |
+| `train.py` | Mutable -- the LLM modifies this each iteration |
+| `prepare.py` | Frozen -- pipeline step, runs once via `prepare_cmd` |
 | `program.md` | Task spec provided to the LLM as context |
 
 ## Artifacts

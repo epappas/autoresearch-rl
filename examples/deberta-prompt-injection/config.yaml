@@ -10,6 +10,9 @@ target:
   type: command
   workdir: examples/deberta-prompt-injection
   timeout_s: 1200
+  prepare_cmd:
+    - python3
+    - prepare.py
   train_cmd:
     - python3
     - train.py

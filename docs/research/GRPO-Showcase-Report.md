@@ -60,10 +60,11 @@ Controller (CPU) --> Basilica API --> GPU Container --> Metrics --> Keep/Discard
 
 Each iteration:
 - Deploys a `pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel` container on an A100 GPU
-- Injects the training script via base64-encoded environment variable (no Docker registry needed)
-- Installs dependencies via `setup_cmd` (pip install at container start)
+- Injects train.py and prepare.py via base64-encoded setup (no Docker registry needed)
+- Runs the three-stage pipeline: `setup_cmd` (pip install) -> `prepare_cmd` (prepare.py
+  produces data files) -> `train_cmd` (train.py reads data, trains, prints metrics)
 - Starts a health-check HTTP server in a daemon thread for Basilica liveness probes
-- Runs the GRPO training with parameters from `AR_PARAMS_JSON` environment variable
+- Injects hyperparameters via `AR_PARAMS_JSON` environment variable
 - Streams training logs; the adapter polls for `key=value` metric patterns in stdout
 - Cleans up the deployment after metrics are collected or on timeout/failure
 
@@ -271,13 +272,25 @@ The implementation follows the DeepSeek-R1 GRPO algorithm:
 
 ### Basilica Container Architecture
 
-Each iteration deploys a fresh container on Basilica:
+Each iteration deploys a fresh container on Basilica with a three-stage pipeline:
+
+```
+setup_cmd (pip install)  ->  prepare_cmd (prepare.py)  ->  train_cmd (train.py)
+      |                            |                            |
+  install deps              write data files              read data, train,
+  download model            /app/data/*.jsonl             print metrics
+```
+
 1. Base image: `pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel`
-2. Setup command installs dependencies (transformers, datasets, accelerate, scipy)
-3. Training script and prepare.py injected via base64 encoding in deploy.py
-4. Health server runs in daemon thread for Basilica health checks
-5. Metrics extracted from stdout via `key=value` pattern matching
-6. Container cleanup via Basilica API after each iteration
+2. `setup_cmd`: installs dependencies (transformers, datasets, accelerate)
+3. `prepare_cmd`: runs `prepare.py` which downloads GSM8K and writes formatted
+   JSONL data files to `/app/data/`. This is the frozen data boundary.
+4. `train_cmd`: runs `train.py` which reads the prepared data, trains with GRPO,
+   evaluates, and prints metrics to stdout. No import dependency on prepare.py.
+5. Both scripts injected via base64 encoding in deploy.py
+6. Health server runs in daemon thread for Basilica liveness probes
+7. Metrics extracted from stdout via `key=value` pattern matching
+8. Container cleanup via Basilica API after each iteration
 
 ### Key Engineering Decisions
 
