@@ -74,7 +74,7 @@ def _run(config: str, overrides: list[str], seed: int | None) -> None:
 
 @app.command()
 def run(
-    config: str = typer.Option(..., "--config"),
+    config: str = typer.Argument(..., help="Path to config.yaml"),
     override: list[str] = typer.Option([], "--override"),
     seed: int | None = typer.Option(None, "--seed"),
 ) -> None:
@@ -83,21 +83,21 @@ def run(
 
 
 @app.command()
-def validate(config: str = typer.Option(..., "--config")) -> None:
+def validate(config: str = typer.Argument(..., help="Path to config.yaml")) -> None:
     cfg = _load_config(config, [])
     build_target(cfg.target)
     typer.echo("OK")
 
 
 @app.command()
-def print_config(config: str = typer.Option(..., "--config")) -> None:
+def print_config(config: str = typer.Argument(..., help="Path to config.yaml")) -> None:
     cfg = _load_config(config, [])
     typer.echo(cfg.model_dump_json(indent=2))
 
 
 @app.command()
 def status(
-    config: str = typer.Option(..., "--config"),
+    config: str = typer.Argument(..., help="Path to config.yaml"),
     last: int = typer.Option(10, "--last", help="Number of recent history entries to show"),
 ) -> None:
     """Show current experiment state (designed for agent use)."""
@@ -124,7 +124,7 @@ def status(
 
 @app.command("run-one")
 def run_one(
-    config: str = typer.Option(..., "--config"),
+    config: str = typer.Argument(..., help="Path to config.yaml"),
     override: list[str] = typer.Option([], "--override"),
     params: str | None = typer.Option(None, "--params", help="JSON dict of hyperparameters"),
     diff_file: str | None = typer.Option(None, "--diff", help="Path to unified diff file"),
@@ -208,12 +208,13 @@ def run_one(
 
 @app.callback(invoke_without_command=True)
 def main(
-    config: str = typer.Option(None, "--config"),
+    ctx: typer.Context,
+    config: str = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
     override: list[str] = typer.Option([], "--override"),
     seed: int | None = typer.Option(None, "--seed"),
 ) -> None:
-    """Default command: run continuously when --config is provided."""
-    if config:
+    """Autonomous ML experiment loop."""
+    if ctx.invoked_subcommand is None and config:
         _run(config, override, seed)
 
 

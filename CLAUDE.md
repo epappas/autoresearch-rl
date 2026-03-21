@@ -21,10 +21,10 @@ uv run ruff check src/ tests/
 uv run mypy src/
 
 # Run the CLI
-uv run autoresearch-rl --config examples/minimal-trainable-target/config.yaml
-uv run autoresearch-rl validate --config examples/minimal-trainable-target/config.yaml
-uv run autoresearch-rl print-config --config examples/minimal-trainable-target/config.yaml
-uv run autoresearch-rl --config examples/minimal-trainable-target/config.yaml --override controller.max_wall_time_s=10
+uv run autoresearch-rl examples/minimal-trainable-target/config.yaml
+uv run autoresearch-rl validate examples/minimal-trainable-target/config.yaml
+uv run autoresearch-rl print-config examples/minimal-trainable-target/config.yaml
+uv run autoresearch-rl examples/minimal-trainable-target/config.yaml --override controller.max_wall_time_s=10
 ```
 
 ## Architecture

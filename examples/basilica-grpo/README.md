@@ -23,11 +23,11 @@ bash examples/basilica-grpo/run.sh
 ```bash
 # Check experiment state (JSON output — agent-readable)
 uv run autoresearch-rl status \
-  --config examples/basilica-grpo/config.yaml --last 5
+  examples/basilica-grpo/config.yaml --last 5
 
 # Inject explicit hyperparameters and run one Basilica iteration
 uv run autoresearch-rl run-one \
-  --config examples/basilica-grpo/config.yaml \
+  examples/basilica-grpo/config.yaml \
   --params '{"learning_rate": 5e-6, "max_steps": 30, "num_generations": 4}'
 ```
 

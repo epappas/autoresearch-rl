@@ -99,7 +99,7 @@ class TestStatusCommand:
         }
         Path(cfg_path).write_text(yaml.dump(cfg))
 
-        result = runner.invoke(app, ["status", "--config", cfg_path])
+        result = runner.invoke(app, ["status", cfg_path])
 
         assert result.exit_code == 0, result.output
         out = json.loads(result.output)
@@ -117,7 +117,7 @@ class TestStatusCommand:
         }
         Path(cfg_path).write_text(yaml.dump(cfg))
 
-        result = runner.invoke(app, ["status", "--config", cfg_path])
+        result = runner.invoke(app, ["status", cfg_path])
 
         assert result.exit_code == 0, result.output
         out = json.loads(result.output)
@@ -136,7 +136,7 @@ class TestStatusCommand:
         }
         Path(cfg_path).write_text(yaml.dump(cfg))
 
-        result = runner.invoke(app, ["status", "--config", cfg_path, "--last", "3"])
+        result = runner.invoke(app, ["status", cfg_path, "--last", "3"])
 
         assert result.exit_code == 0
         out = json.loads(result.output)
@@ -151,7 +151,7 @@ class TestStatusCommand:
         }
         Path(cfg_path).write_text(yaml.dump(cfg))
 
-        result = runner.invoke(app, ["status", "--config", cfg_path])
+        result = runner.invoke(app, ["status", cfg_path])
 
         assert result.exit_code == 0
         out = json.loads(result.output)
@@ -167,7 +167,7 @@ class TestRunOneCommand:
         cfg_path = _write_config(tmp_path)
 
         result = runner.invoke(app, [
-            "run-one", "--config", cfg_path,
+            "run-one", cfg_path,
             "--params", '{"lr": 0.001}',
         ])
 
@@ -186,7 +186,7 @@ class TestRunOneCommand:
         })
 
         result = runner.invoke(app, [
-            "run-one", "--config", cfg_path,
+            "run-one", cfg_path,
             "--diff", str(diff_file),
         ])
 
@@ -199,7 +199,7 @@ class TestRunOneCommand:
             "policy": {"type": "static"},
         })
 
-        result = runner.invoke(app, ["run-one", "--config", cfg_path])
+        result = runner.invoke(app, ["run-one", cfg_path])
 
         assert result.exit_code == 0, result.output
         out = json.loads(result.output)
@@ -211,7 +211,7 @@ class TestRunOneCommand:
         cfg_path = _write_config(tmp_path)
 
         result = runner.invoke(app, [
-            "run-one", "--config", cfg_path,
+            "run-one", cfg_path,
             "--params", '{"lr": 0.001}',
             "--diff", str(diff_file),
         ])
@@ -225,7 +225,7 @@ class TestRunOneCommand:
         cfg_path = _write_config(tmp_path)
 
         result = runner.invoke(app, [
-            "run-one", "--config", cfg_path,
+            "run-one", cfg_path,
             "--diff", str(diff_file),
         ])
 
@@ -235,7 +235,7 @@ class TestRunOneCommand:
         cfg_path = _write_config(tmp_path)
 
         result = runner.invoke(app, [
-            "run-one", "--config", cfg_path,
+            "run-one", cfg_path,
             "--params", "{}",
         ])
 
