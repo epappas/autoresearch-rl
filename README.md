@@ -11,22 +11,11 @@ prepare.py  -->  [data]  -->  train.py  -->  [metrics]  -->  keep/discard  -->  
                                   +------- params or diff -----+
 ```
 
-## Install
-
-```bash
-uv sync --extra dev
-uv sync --extra basilica   # optional: Basilica GPU cloud
-```
-
 ## Quickstart
 
 ```bash
-# Local (no GPU, deterministic, milliseconds per iteration)
-bash examples/minimal-trainable-target/run.sh
-
-# Basilica GPU cloud (GRPO post-training on GSM8K)
-export BASILICA_API_TOKEN="..." CHUTES_API_KEY="..."
-python3 examples/basilica-grpo/deploy.py
+uv sync --extra dev
+uv run autoresearch-rl run examples/minimal-trainable-target/config.yaml
 ```
 
 ## How it works
