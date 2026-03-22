@@ -219,25 +219,30 @@ and training recipes. Autonomous post-training optimization is the higher-value 
 
 ### Key Observations
 
-1. **lr=5e-6 dominates:** 12 of 15 iterations used lr=5e-6, including both kept results.
-   The one lr=1e-5 run (iter 2) catastrophically degraded to 3%, confirming GRPO is
-   sensitive to high learning rates. lr=3e-6 produced moderate results (27-30%).
+Note: with 15 iterations and 2-3 values per parameter, these observations are directional
+signals, not statistically rigorous conclusions. Multiple parameters co-vary across runs.
 
-2. **More steps improve results:** The best result used max_steps=80 (eval_score=0.36)
-   vs 50 for the first improvement (0.34). The 30-step runs clustered around 0.34-0.35,
-   suggesting more steps help but with diminishing returns.
+1. **lr=1e-5 is catastrophic:** The one lr=1e-5 run (iter 2) degraded to 3% pass@1 --
+   a near-total collapse. lr=5e-6 and lr=3e-6 both produced reasonable results (23-36%),
+   with lr=5e-6 in both kept iterations.
 
-3. **num_generations=3 is the sweet spot:** 14 of 15 iterations used gen=3. The single
-   gen=2 run (iter 6) scored 0.23 -- the worst non-catastrophic result. More generations
-   provide better advantage estimation for GRPO.
+2. **More steps trend better:** The best result used max_steps=80 (0.36) vs 50 for the
+   first improvement (0.34). 30-step runs clustered around 0.34-0.35. However, this is
+   confounded with other parameters.
 
-4. **temperature=0.8 slightly edges 1.0:** Both kept results and the highest discards used
-   temp=0.8. Lower temperature produces more focused rollouts, which may give cleaner
-   reward signal for GRPO's advantage computation.
+3. **num_generations=3 used most often:** 14 of 15 iterations used gen=3 (LLM/random
+   selection bias). The single gen=2 run (iter 6, 0.23) was notably worse, but this is
+   a single data point.
 
-5. **High variance across runs:** eval_score ranged from 0.03 to 0.36, with a mean of
-   0.291 and standard deviation of 0.08. This reflects the stochastic nature of GRPO
-   training with short step budgets.
+4. **High variance across runs:** eval_score ranged from 0.03 to 0.36 (mean 0.291,
+   stdev 0.08). This reflects the stochastic nature of GRPO training with short step
+   budgets and binary reward signal.
+
+5. **Baseline context:** Our 26% baseline is lower than the published ~36% for
+   Qwen2.5-0.5B-Instruct on GSM8K, likely due to differences in prompt formatting
+   and answer extraction strictness. The 36% best result recovers to the published
+   baseline level, suggesting the GRPO training is partly learning format compliance
+   alongside reasoning improvement.
 
 6. **Infrastructure reliability:** 100% success rate across 15 Basilica deployments. No
    infrastructure failures in this run (compared to 77% in the earlier prompt-format run).
