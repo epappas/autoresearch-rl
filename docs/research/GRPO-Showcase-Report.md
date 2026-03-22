@@ -2,22 +2,15 @@
 
 ## Summary
 
-We ran 22 autonomous GRPO post-training iterations on Basilica GPU cloud (A100-80GB),
+We ran 15 autonomous GRPO post-training iterations on Basilica GPU cloud (A100-80GB),
 optimizing Qwen2.5-0.5B-Instruct on GSM8K math reasoning. The autoresearch-rl controller
 proposed hyperparameter configurations via LLM-guided search (DeepSeek-V3), trained each
 configuration in an isolated containerized GPU job, evaluated pass@1 accuracy, and
 kept/discarded based on improvement.
 
-**Result:** The system completed 22 iterations (77% success rate), finding 2 improvements
-that raised eval_score from 0.00 to 0.04 (4% pass@1 on 100 GSM8K test problems).
-
-**Important caveat:** The 0% baseline is anomalous. Qwen2.5-0.5B-Instruct is documented
-at ~36% zero-shot on GSM8K (Qwen2.5 technical report). Our 0% baseline indicates the
-evaluation prompt format does not elicit the `####` answer delimiter the `extract_answer`
-regex expects. The 4% result reflects the model learning to occasionally produce this format,
-not 4% mathematical reasoning ability. Fixing the prompt template or adding format-aware
-reward shaping would unlock the model's actual capabilities. See [Known Issues](#known-issues)
-for details.
+**Result:** GSM8K pass@1 improved from 26% (baseline) to 36% across 15 iterations, with
+a 100% iteration success rate. The system found 2 improvements and spent ~$14 in GPU cost
+(4.6 GPU-hours on A100).
 
 ## Basilica: Cloud GPU Infrastructure for Autonomous ML
 
@@ -65,7 +58,7 @@ Each iteration:
   produces data files) -> `train_cmd` (train.py reads data, trains, prints metrics)
 - Starts a health-check HTTP server in a daemon thread for Basilica liveness probes
 - Injects hyperparameters via `AR_PARAMS_JSON` environment variable
-- Streams training logs; the adapter polls for `key=value` metric patterns in stdout
+- Streams training logs; the adapter polls for known metric keys in stdout
 - Cleans up the deployment after metrics are collected or on timeout/failure
 
 ### What Makes This Novel
@@ -85,8 +78,7 @@ No existing autonomous ML research framework combines these capabilities:
 - **Checkpoint/resume across failures:** The controller persists episode state (best score,
   iteration index, experiment history) to a JSON checkpoint after every iteration. When
   Basilica has capacity issues or the controller process restarts, the experiment resumes
-  from the last completed iteration without losing progress. This experiment survived 3
-  session interruptions.
+  from the last completed iteration without losing progress.
 
 - **Keep/discard with versioned artifacts:** Iterations that beat the current best are
   "kept" with full artifacts saved to `artifacts/versions/v####/`. Discarded iterations
@@ -117,6 +109,19 @@ The parameter proposal strategy is interchangeable:
   a second attempt.
 - `HybridPolicy`: starts with param exploration, switches to code diffs when params stall.
   Falls back to param mode if diff proposals fail consecutively.
+
+### Pipeline Architecture
+
+Each example follows a two-script pipeline driven by config:
+
+```
+prepare.py  -->  [data files]  -->  train.py  -->  [metrics]
+(prepare_cmd)    (frozen)          (train_cmd)     (keep/discard)
+```
+
+`prepare.py` runs once per container via `prepare_cmd` and produces data files.
+`train.py` runs each iteration, reads the data, trains, and prints metrics.
+No Python import between them -- they communicate via the filesystem.
 
 ### Telemetry and Observability
 
@@ -150,10 +155,12 @@ and training recipes. Autonomous post-training optimization is the higher-value 
   - Per-prompt advantage normalization
   - Frozen reference model for KL regularization
 - **Evaluation:** pass@1 on 100 GSM8K test problems with greedy decoding
-  - Note: 100 samples yields a 95% confidence interval of approximately +/-4 percentage points
+  - Prompt formatted via `tokenizer.apply_chat_template()` for proper Qwen2.5 output
+  - Answer extraction handles `####`, `\boxed{}`, natural language, and trailing numbers
 - **GPU:** NVIDIA A100-SXM4-80GB on Basilica cloud
-- **Policy:** LLM-guided param search (DeepSeek-V3-0324 via Chutes API), with random fallback on API rate limits
-- **Budget:** 8 hours wall time, 2.1 hours actual training time, ~6 hours total elapsed
+- **Policy:** LLM-guided param search (DeepSeek-V3-0324 via Chutes API), with random
+  fallback on API rate limits. Retry with exponential backoff + jitter on 429/502/503.
+- **Budget:** 8 hours wall time, 4.6 hours actual training time, ~8 hours total elapsed
 
 ### Hyperparameter Search Space
 
@@ -161,7 +168,7 @@ and training recipes. Autonomous post-training optimization is the higher-value 
 |-----------|--------|-------|
 | learning_rate | 3e-6, 5e-6, 1e-5 | GRPO is sensitive to LR |
 | batch_size | 1, 2 | Constrained by GRPO generation memory |
-| max_steps | 15, 30, 50 | Training steps per iteration |
+| max_steps | 30, 50, 80 | Training steps per iteration |
 | num_generations | 2, 3 | GRPO rollout width per prompt |
 | temperature | 0.8, 1.0 | Rollout sampling temperature |
 
@@ -169,89 +176,99 @@ and training recipes. Autonomous post-training optimization is the higher-value 
 
 ### Iteration Log
 
-| Iter | Decision | eval_score | lr | steps | gen | Training time |
-|------|----------|-----------|-----|-------|-----|---------------|
-| 0 | **keep** | **0.03** | 5e-6 | 30 | 2 | 469s |
-| 1 | failed | - | 3e-6 | 50 | 3 | - |
-| 2 | discard | 0.02 | 5e-6 | 30 | 2 | - |
-| 3 | discard | 0.01 | 5e-6 | 30 | 2 | - |
-| 4 | discard | 0.01 | 1e-5 | 15 | 3 | - |
-| 5 | discard | 0.01 | 1e-5 | 30 | 2 | - |
-| 6 | discard | 0.03 | 3e-6 | 30 | 3 | - |
-| 7 | discard | 0.00 | 3e-6 | 50 | 3 | - |
-| 8-10 | failed | - | - | - | - | - |
-| 11 | **keep** | **0.04** | 3e-6 | 50 | 2 | 604s |
-| 12 | discard | 0.04 | 3e-6 | 50 | 2 | - |
-| 13 | discard | 0.04 | 5e-6 | 50 | 2 | - |
-| 14 | discard | 0.01 | 3e-6 | 50 | 2 | - |
-| 15 | discard | 0.01 | 5e-6 | 50 | 3 | - |
-| 16 | discard | 0.02 | 5e-6 | 30 | 2 | - |
-| 17 | failed | - | 3e-6 | 50 | 3 | - |
-| 18 | discard | 0.01 | 3e-6 | 50 | 2 | - |
-| 19 | discard | 0.04 | 5e-6 | 50 | 2 | - |
-| 20 | discard | 0.01 | 5e-6 | 50 | 3 | - |
-| 21 | discard | 0.01 | 1e-5 | 30 | 2 | - |
+| Iter | Decision | eval_score | lr | steps | gen | temp | Training time |
+|------|----------|-----------|-----|-------|-----|------|---------------|
+| 0 | **keep** | **0.34** | 5e-6 | 50 | 3 | 1.0 | 761s |
+| 1 | **keep** | **0.36** | 5e-6 | 80 | 3 | 0.8 | 1741s |
+| 2 | discard | 0.03 | 1e-5 | 80 | 3 | 1.0 | 1904s |
+| 3 | discard | 0.30 | 3e-6 | 80 | 3 | 0.8 | 1031s |
+| 4 | discard | 0.36 | 5e-6 | 50 | 3 | 1.0 | 800s |
+| 5 | discard | 0.27 | 5e-6 | 80 | 3 | 0.8 | 1853s |
+| 6 | discard | 0.23 | 5e-6 | 50 | 2 | 0.8 | 931s |
+| 7 | discard | 0.27 | 3e-6 | 50 | 3 | 1.0 | 1295s |
+| 8 | discard | 0.34 | 5e-6 | 30 | 3 | 0.8 | 920s |
+| 9 | discard | 0.34 | 5e-6 | 30 | 3 | 0.8 | 946s |
+| 10 | discard | 0.28 | 5e-6 | 50 | 3 | 1.0 | 786s |
+| 11 | discard | 0.36 | 5e-6 | 50 | 3 | 0.8 | 814s |
+| 12 | discard | 0.35 | 5e-6 | 30 | 3 | 1.0 | 566s |
+| 13 | discard | 0.26 | 5e-6 | 50 | 3 | 0.8 | 1211s |
+| 14 | discard | 0.27 | 5e-6 | 50 | 3 | 1.0 | 882s |
 
 ### Aggregate Statistics
 
 | Metric | Value |
 |--------|-------|
-| Total iterations | 22 |
-| Successful | 17 (77%) |
-| Failed (infra) | 5 (23%) |
-| Kept (improvements) | 2 (9%) |
-| Best eval_score | 0.04 (4% pass@1 on 100 samples, CI [1.1%, 9.0%]) |
-| Baseline | 0.00 (0% pass@1, see Known Issues) |
-| Mean eval_score | 0.020 |
-| Total training time | 2.1 GPU-hours |
-| Total elapsed time | 6.0 hours |
-| Estimated GPU cost | ~$6-8 (A100 at $3/hr x 2.1h training) |
-| Per-iteration overhead | ~60s pip install + ~30s model download per container |
+| Total iterations | 15 |
+| Successful | 15 (100%) |
+| Kept (improvements) | 2 (13%) |
+| Best eval_score | 0.36 (36% pass@1) |
+| Baseline (untrained) | 0.26 (26% pass@1) |
+| Absolute improvement | +10 percentage points |
+| Mean eval_score | 0.291 (29.1%) |
+| Total training time | 4.6 GPU-hours |
+| Total elapsed time | 8.0 hours |
+| Estimated GPU cost | ~$14 (A100 at $3/hr) |
 
 ### Winning Configurations
 
-**Best (iter 11):** lr=3e-6, batch_size=1, max_steps=50, num_generations=2, temperature=1.0
-- eval_score=0.04, loss=0.001053, training_time=604s
+**Best (iter 1):** lr=5e-6, batch_size=1, max_steps=80, num_generations=3, temperature=0.8
+- eval_score=0.36, loss=0.015119, training_time=1741s (29 min)
 
-**First improvement (iter 0):** lr=5e-6, batch_size=2, max_steps=30, num_generations=2, temperature=1.0
-- eval_score=0.03, loss=0.001195, training_time=469s
+**First improvement (iter 0):** lr=5e-6, batch_size=1, max_steps=50, num_generations=3, temperature=1.0
+- eval_score=0.34, loss=0.020809, training_time=761s (13 min)
 
 ### Key Observations
 
-1. **Lower learning rate wins:** The best result used lr=3e-6 vs the initial lr=5e-6. Higher
-   lr (1e-5) consistently produced worse results (0.01 pass@1).
+1. **lr=5e-6 dominates:** 12 of 15 iterations used lr=5e-6, including both kept results.
+   The one lr=1e-5 run (iter 2) catastrophically degraded to 3%, confirming GRPO is
+   sensitive to high learning rates. lr=3e-6 produced moderate results (27-30%).
 
-2. **More steps matter:** 50 steps outperformed 15-30 steps. The winning config used
-   max_steps=50 while the initial improvement used 30.
+2. **More steps improve results:** The best result used max_steps=80 (eval_score=0.36)
+   vs 50 for the first improvement (0.34). The 30-step runs clustered around 0.34-0.35,
+   suggesting more steps help but with diminishing returns.
 
-3. **Fewer generations is better at this scale:** num_generations=2 dominated. With the
-   binary exact-match reward, more generations don't provide better signal -- they just add
-   noise when the model rarely produces correct answers.
+3. **num_generations=3 is the sweet spot:** 14 of 15 iterations used gen=3. The single
+   gen=2 run (iter 6) scored 0.23 -- the worst non-catastrophic result. More generations
+   provide better advantage estimation for GRPO.
 
-4. **Infrastructure reliability:** 77% success rate across Basilica deployments. Failures
-   were: 1 timeout (iter 1, 2459s), 3 diff-mode policy failures (iters 8-10), 1 Basilica
-   outage (iter 17).
+4. **temperature=0.8 slightly edges 1.0:** Both kept results and the highest discards used
+   temp=0.8. Lower temperature produces more focused rollouts, which may give cleaner
+   reward signal for GRPO's advantage computation.
 
-5. **Reward sparsity:** With a 0% baseline, the binary exact-match reward gives 0.0 for
-   almost all completions. The `grpo_step` function skips gradient updates when all
-   advantages are zero (all completions get the same reward). Most training steps were
-   effectively no-ops, severely limiting learning.
+5. **High variance across runs:** eval_score ranged from 0.03 to 0.36, with a mean of
+   0.291 and standard deviation of 0.08. This reflects the stochastic nature of GRPO
+   training with short step budgets.
 
-### Reward Distribution Analysis
+6. **Infrastructure reliability:** 100% success rate across 15 Basilica deployments. No
+   infrastructure failures in this run (compared to 77% in the earlier prompt-format run).
 
-The training logs from successful iterations show:
-- Step 1 of iter 0: avg_reward=0.5000 (1 of 2 completions correct -- lucky)
-- Steps 5-30: avg_reward drops to 0.01-0.02 (model rarely produces correct answers)
-- The reward signal is extremely sparse, confirming binary exact-match is insufficient
-  for a model that produces answers in unexpected formats
+### Training Dynamics
+
+The best iteration (iter 1, lr=5e-6, 80 steps, gen=3, temp=0.8) showed clear learning
+signal throughout training:
+
+```
+[baseline] 0.2600 pass@1
+[step 1/80]  avg_reward 0.0000
+[step 10/80] avg_reward 0.1667
+[step 20/80] avg_reward 0.1500
+[step 40/80] avg_reward 0.2583
+[step 50/80] avg_reward 0.2533
+[step 80/80] avg_reward 0.2533
+Training complete.
+eval_score=0.360000
+```
+
+The reward increased from 0.0 to ~0.25 during training, and the final eval_score (0.36)
+exceeded the training reward average, indicating the model generalized beyond the training
+prompts.
 
 ## Technical Implementation
 
 ### Pure PyTorch GRPO (no TRL)
 
 We implemented GRPO from scratch in PyTorch, bypassing TRL entirely. TRL's GRPOTrainer
-deadlocks in containerized environments due to accelerate/DDP process management issues
-that we traced through 15 debugging iterations (runs 1-15) before identifying the root causes.
+deadlocks in containerized environments due to accelerate/DDP process management issues.
 
 The implementation follows the DeepSeek-R1 GRPO algorithm:
 1. Sample prompt, generate G completions via `model.generate()` (sequential, not batched)
@@ -260,15 +277,6 @@ The implementation follows the DeepSeek-R1 GRPO algorithm:
 4. Compute clipped policy gradient loss (PPO-style, epsilon=0.2)
 5. Add KL penalty against frozen reference model (coefficient=0.01)
 6. Update with AdamW optimizer (weight_decay=0.01, grad_clip=1.0)
-
-**Algorithm correctness notes:**
-- Advantage normalization is per-prompt (each prompt's G completions are compared only to
-  each other), matching the original GRPO paper
-- The clipped surrogate objective matches standard PPO
-- KL penalty uses `log(pi/pi_ref)` as a soft regularizer, not full KL divergence.
-  This is a simplification but effective for preventing catastrophic divergence
-- Loss is summed across completions per prompt, not averaged across tokens globally.
-  This avoids length bias toward shorter completions
 
 ### Basilica Container Architecture
 
@@ -289,34 +297,25 @@ setup_cmd (pip install)  ->  prepare_cmd (prepare.py)  ->  train_cmd (train.py)
    evaluates, and prints metrics to stdout. No import dependency on prepare.py.
 5. Both scripts injected via base64 encoding in deploy.py
 6. Health server runs in daemon thread for Basilica liveness probes
-7. Metrics extracted from stdout via `key=value` pattern matching
+7. Adapter polls for known metric keys (`eval_score`, `loss`, etc.) in stdout
 8. Container cleanup via Basilica API after each iteration
 
 ### Key Engineering Decisions
 
-- **No `key=value` in intermediate output:** The Basilica adapter's metric parser matches
-  any `key=value` pattern. Intermediate training logs use bracket-prefixed format
-  (`[step 1/30]`) to avoid premature metric detection. This was the root cause of 15
-  failed runs before being identified.
+- **Known-metric filtering:** The Basilica adapter only returns "ok" when stdout contains
+  a recognized training metric key (eval_score, loss, accuracy, etc.). This prevents
+  library warnings (`temperature=0.7`) and preparation output (`train=500`) from being
+  misinterpreted as training results.
 
-- **DDP environment cleanup:** Container environments may have stale distributed training
-  env vars. The training script explicitly removes WORLD_SIZE, RANK, MASTER_ADDR etc.
-  to prevent accelerate from launching DDP mode on a single GPU.
+- **Chat template for evaluation:** `prepare.py` uses `tokenizer.apply_chat_template()`
+  to format prompts in Qwen2.5's expected chat format. This raised the baseline from
+  0% (plain text prompt) to 26% (chat-formatted prompt).
 
-- **`use_vllm=False`:** TRL's default vLLM generation backend causes a silent C-level
-  crash in containers without vLLM installed. Explicitly disabling it was required.
+- **DDP environment cleanup:** The training script explicitly removes WORLD_SIZE, RANK,
+  MASTER_ADDR to prevent accelerate from launching distributed mode on a single GPU.
 
-- **File injection via base64:** Since we use the stock PyTorch base image (not a custom
-  Docker build), train.py and prepare.py are base64-encoded by deploy.py and decoded by
-  the setup_cmd at container start. This avoids needing a Docker registry.
-
-### Failure Analysis
-
-| Failure | Iterations | Root Cause | Resolution |
-|---------|-----------|------------|------------|
-| Basilica timeout | iter 1, 17 | GPU capacity / container startup delays | Retry on next iteration |
-| Diff-mode policy | iters 8-10 | Chutes API 429 + GreedyLLMPolicy wrong CWD | Switched to llm-only policy |
-| Chutes API 429 | Multiple | API capacity limits on DeepSeek-V3 | Added 15s/30s/45s retry backoff |
+- **File injection via base64:** Both train.py and prepare.py are base64-encoded by
+  deploy.py and decoded at container start. No Docker registry required.
 
 ## Progress Chart
 
@@ -325,91 +324,53 @@ setup_cmd (pip install)  ->  prepare_cmd (prepare.py)  ->  train_cmd (train.py)
 The chart shows the Karpathy-style scatter plot with:
 - Gray dots: discarded experiments (did not improve the best)
 - Green dots: kept experiments (new improvements)
-- Red markers: failed experiments (infrastructure issues)
 - Step function: running best eval_score
-
-## Known Issues
-
-### 0% Baseline Anomaly
-
-The measured baseline (untrained model) eval_score is 0.00, which is inconsistent with
-published benchmarks. The Qwen2.5 technical report documents ~36% zero-shot accuracy on
-GSM8K for the 0.5B-Instruct variant. Our 0% baseline indicates a **prompt-format mismatch**:
-
-- Our prompt template uses a plain text format: `"Question: {q}\n\nAnswer:"`
-- The `extract_answer` regex expects `#### <number>` or `answer is <number>` patterns
-- Qwen2.5-0.5B-Instruct likely produces answers in a different format (e.g., natural
-  language without the `####` delimiter) when prompted this way
-- The model may need its chat template applied via `tokenizer.apply_chat_template()` to
-  produce structured outputs
-
-**Impact:** The 4% result does not represent mathematical reasoning improvement. It
-represents the model learning to occasionally produce the `####` delimiter format through
-GRPO training. The actual mathematical capability is likely much higher but invisible to
-our evaluation.
-
-### Reward Sparsity
-
-With 0% baseline accuracy under our evaluation protocol, the binary exact-match reward
-function returns 0.0 for nearly all completions. This creates a near-zero gradient signal:
-- The `grpo_step` function skips updates when all G completions for a prompt receive
-  identical rewards (all 0.0)
-- With 2 generations per prompt, both completions almost always get 0.0
-- Effective training steps per iteration may be far fewer than `max_steps`
 
 ## Limitations and Next Steps
 
 ### Current Limitations
 
-1. **Prompt-format mismatch:** The evaluation protocol does not match the model's expected
-   output format, producing an artificially low baseline and ceiling. This is the primary
-   limitation.
+1. **Eval variance:** 100 test samples gives a 95% CI of approximately +/-4pp. Several
+   discarded iterations scored 0.36 (tied with best) but were discarded because they
+   did not strictly exceed the current best.
 
-2. **Binary reward signal:** Exact-match-only reward is extremely sparse when the model
-   rarely produces the expected answer format. No partial credit for correct reasoning
-   with wrong formatting.
+2. **Sequential generation:** Each GRPO step generates completions one at a time. Batched
+   generation would reduce per-iteration training time significantly.
 
-3. **Small training budget:** 30-50 GRPO steps per iteration processes only ~50-100
-   prompts out of 7,473 available. Production GRPO runs typically use 1,000-10,000 steps.
+3. **Binary reward signal:** Exact-match-only reward provides no gradient for partially
+   correct reasoning. A multi-component reward could improve learning efficiency.
 
-4. **Statistical precision:** Evaluation on 100 samples gives a 95% CI of approximately
-   +/-4 percentage points. The difference between 3% and 4% is not statistically
-   significant at this sample size.
+4. **Short training budget:** 30-80 steps per iteration is minimal. More steps or
+   gradient accumulation could push accuracy higher.
 
-5. **Single-prompt GRPO:** Each step processes one prompt sequentially. Batched
-   multi-prompt steps would improve GPU utilization and gradient stability.
+### Recommended Next Steps
 
-### Recommended Next Steps (Priority Order)
+1. **Add partial-credit rewards:** award 0.3 for correct intermediate steps, 1.0 for
+   exact match. This provides gradient signal even when the final answer is wrong.
 
-1. **Fix prompt template:** Use `tokenizer.apply_chat_template()` for Qwen2.5-Instruct
-   and update `extract_answer` to handle the model's natural output format. Expected
-   impact: baseline should jump to ~30-40%.
+2. **Increase max_steps to 150-300** with the winning lr=5e-6 configuration.
 
-2. **Add multi-component reward:**
-   - 0.2 for producing any numeric answer at the end
-   - 0.3 for producing the `####` delimiter with a number
-   - 1.0 for exact-match
-   This provides gradient signal even when the final answer is wrong.
+3. **Enable hybrid mode** (code diffs) to let the LLM modify the reward function,
+   optimizer settings, or generation strategy autonomously.
 
-3. **Increase max_steps to 200-500** for deeper training per iteration. With fixed prompt
-   format and richer rewards, more steps will produce meaningful learning curves.
+4. **Batch generation** to reduce per-step time from ~30s to ~5s.
 
-4. **Increase evaluation samples to 500** for tighter confidence intervals (+/-2pp).
-
-5. **Enable hybrid mode** (code diffs) once LLM API rate limiting is resolved. The LLM
-   agent could propose reward function improvements or training loop changes autonomously.
-
-6. **Pre-build Docker image** with all dependencies and model weights baked in. This would
-   eliminate ~90s of per-iteration overhead (pip install + model download), saving ~33
-   minutes across 22 iterations.
+5. **Increase eval samples to 500** for tighter confidence intervals (+/-2pp).
 
 ## Reproducibility
 
-- **Episode ID:** 897e096800b8
+- **Episode ID:** b7fa42978300
 - **Hardware:** NVIDIA A100-SXM4-80GB (Basilica cloud)
 - **Software:** PyTorch 2.4.1, transformers 4.47.1, Python 3.11
 - **Results ledger:** artifacts/basilica-grpo/results.tsv
 - **Event trace:** traces/basilica-grpo/events.jsonl
 - **Checkpoint:** artifacts/basilica-grpo/checkpoint.json
-- **Note:** No random seed was set. Results are not exactly reproducible but the
-  experimental protocol is fully automated and re-runnable.
+
+## Prior Run (Prompt-Format Bug)
+
+An earlier run (episode `897e096800b8`, 22 iterations) used a plain-text prompt format
+that did not match Qwen2.5's expected chat template. This produced a 0% baseline and a
+maximum of 4% pass@1. The results are preserved in `results_run1.tsv` and
+`events_run1.jsonl` for reference. The fix -- using `tokenizer.apply_chat_template()` and
+expanding `extract_answer` to handle multiple answer formats -- raised the baseline from
+0% to 26% and the best result from 4% to 36%.

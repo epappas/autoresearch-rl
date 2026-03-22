@@ -14,7 +14,7 @@ target:
   train_cmd:
     - python3
     - /app/train.py
-  timeout_s: 2400
+  timeout_s: 3600
   basilica:
     image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
     gpu_count: 1
@@ -22,7 +22,7 @@ target:
     memory: "48Gi"
     cpu: "8"
     storage: /data
-    ttl_seconds: 2700
+    ttl_seconds: 3900
     min_gpu_memory_gb: 24
     setup_cmd: "pip install --no-cache-dir transformers==4.47.1 datasets==3.2.0 accelerate==0.34.2 scipy && python3 -c \"from transformers import AutoModelForCausalLM, AutoTokenizer; AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-0.5B-Instruct'); AutoTokenizer.from_pretrained('Qwen/Qwen2.5-0.5B-Instruct')\""
 
@@ -31,8 +31,8 @@ policy:
   params:
     learning_rate: [0.000003, 0.000005, 0.00001]
     batch_size: [1, 2]
-    max_steps: [50, 100, 150]
-    num_generations: [2, 3, 4]
+    max_steps: [30, 50, 80]
+    num_generations: [2, 3]
     temperature: [0.8, 1.0]
   mutable_file: examples/basilica-grpo/train.py
   frozen_file: examples/basilica-grpo/prepare.py
