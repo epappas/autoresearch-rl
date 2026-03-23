@@ -18,7 +18,7 @@ target:
   basilica:
     image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
     gpu_count: 1
-    gpu_models: ["A100", "H100"]
+    gpu_models: ["A100"]
     memory: "48Gi"
     cpu: "8"
     storage: /data

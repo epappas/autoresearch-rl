@@ -46,3 +46,17 @@ fbefa06	eval_score	0.010000	0.0	discard	continuous	897e096800b8	21	-0.040000	fix
 3a121e2	eval_score	0.350000	0.0	discard	continuous	b7fa42978300	12	-0.360000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
 3a121e2	eval_score	0.260000	0.0	discard	continuous	b7fa42978300	13	-0.360000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
 3a121e2	eval_score	0.270000	0.0	discard	continuous	b7fa42978300	14	-0.360000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.280000	0.0	keep	continuous	01816cafc510	0	-0.280000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.310000	0.0	keep	continuous	01816cafc510	1	-0.310000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.280000	0.0	discard	continuous	01816cafc510	2	-0.310000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.300000	0.0	discard	continuous	01816cafc510	3	-0.310000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.320000	0.0	keep	continuous	01816cafc510	4	-0.320000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.240000	0.0	discard	continuous	01816cafc510	5	-0.320000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.270000	0.0	discard	continuous	01816cafc510	6	-0.320000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.350000	0.0	keep	continuous	01816cafc510	7	-0.350000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.240000	0.0	discard	continuous	01816cafc510	8	-0.350000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.000000	0.0	discard	continuous	01816cafc510	9	-0.350000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.270000	0.0	discard	continuous	01816cafc510	10	-0.350000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.200000	0.0	discard	continuous	01816cafc510	11	-0.350000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.240000	0.0	discard	continuous	01816cafc510	12	-0.350000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
+60c9a97	eval_score	0.220000	0.0	discard	continuous	01816cafc510	13	-0.350000	fixed_wallclock	28800	ef8fd2cb7b384864	1	
