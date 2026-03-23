@@ -247,6 +247,32 @@ signals, not statistically rigorous conclusions. Multiple parameters co-vary acr
 6. **Infrastructure reliability:** 100% success rate across 15 Basilica deployments. No
    infrastructure failures in this run (compared to 77% in the earlier prompt-format run).
 
+### LLM Policy vs Grid Search
+
+A separate grid search run (episode `01816caf`, 13 iterations) provides a direct baseline
+comparison. Grid search cycles exhaustively through parameter combinations; the LLM policy
+uses experiment history and domain knowledge to propose the next configuration.
+
+| Metric | LLM Policy | Grid Search |
+|--------|-----------|-------------|
+| Iterations | 15 | 13 |
+| Best eval_score | **0.36** (iter 1) | 0.35 (iter 7) |
+| Mean eval_score | **0.291** | 0.271 |
+| Iterations to find best | **2** | 8 |
+| Kept improvements | 2 | 4 |
+
+The LLM policy reached its best result by iteration 1. Grid search needed 8 iterations
+and 4 incremental improvements (0.28 -> 0.31 -> 0.32 -> 0.35) to approach the same level.
+
+The final scores are close (0.36 vs 0.35, within eval noise at 100 samples). The
+meaningful difference is **convergence speed**: the LLM policy's domain knowledge about
+GRPO hyperparameters (lr=5e-6 is a known-good starting point for small models) let it
+skip the low-performing region of the search space that grid search had to enumerate.
+
+For this well-studied task, the LLM advantage is primarily speed, not final quality.
+The stronger case for LLM-guided search would be in novel settings where prior knowledge
+from the LLM's training data provides genuine insight that uninformed search cannot match.
+
 ### Training Dynamics
 
 The best iteration (iter 1, lr=5e-6, 80 steps, gen=3, temp=0.8) showed clear learning
