@@ -1,0 +1,64 @@
+name: security-judge
+
+program_path: examples/security-judge/program.md
+
+objective:
+  metric: eval_score
+  direction: max
+
+target:
+  type: basilica
+  prepare_cmd:
+    - python3
+    - /app/prepare.py
+  train_cmd:
+    - python3
+    - /app/train.py
+  timeout_s: 3600
+  basilica:
+    image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
+    gpu_count: 1
+    gpu_models: ["A100"]
+    memory: "48Gi"
+    cpu: "8"
+    storage: /data
+    ttl_seconds: 3900
+    min_gpu_memory_gb: 24
+    setup_cmd: "pip install --no-cache-dir transformers==4.47.1 datasets==3.2.0 accelerate==0.34.2 peft==0.13.2 scipy && python3 -c \"from transformers import AutoModelForCausalLM, AutoTokenizer; AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-0.5B-Instruct'); AutoTokenizer.from_pretrained('Qwen/Qwen2.5-0.5B-Instruct')\""
+
+policy:
+  type: hybrid
+  params:
+    learning_rate: [0.00005, 0.0001, 0.0003]
+    max_steps: [30, 50, 80]
+    num_generations: [2, 3]
+    temperature: [0.7, 0.9]
+    lora_rank: [4, 8, 16]
+  mutable_file: examples/security-judge/train.py
+  frozen_file: examples/security-judge/prepare.py
+  program_file: examples/security-judge/program.md
+  llm_api_url: "https://llm.chutes.ai/v1"
+  llm_model: "deepseek-ai/DeepSeek-V3-0324"
+  llm_api_key_env: "CHUTES_API_KEY"
+  llm_timeout_s: 90
+  hybrid_param_explore_iters: 8
+  hybrid_stall_threshold: 4
+  hybrid_diff_failure_limit: 3
+
+controller:
+  max_wall_time_s: 28800
+  no_improve_limit: 15
+  failure_rate_limit: 0.85
+  failure_window: 8
+  checkpoint_path: artifacts/security-judge/checkpoint.json
+
+comparability:
+  budget_mode: fixed_wallclock
+  expected_budget_s: 28800
+  strict: false
+
+telemetry:
+  trace_path: traces/security-judge/events.jsonl
+  ledger_path: artifacts/security-judge/results.tsv
+  artifacts_dir: artifacts/security-judge/runs
+  versions_dir: artifacts/security-judge/versions
