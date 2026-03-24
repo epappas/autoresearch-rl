@@ -19,12 +19,10 @@ INJECT_FILES = {
     "/app/prepare.py": DIR / "prepare.py",
 }
 
-# Inject source data if available locally
-SRC_DATA_DIR = REPO_ROOT / "examples" / "deberta-prompt-injection" / "data"
-
 
 def _build_file_injection_cmd() -> str:
-    parts: list[str] = ["mkdir -p /app /app/src_data"]
+    """Inject only the scripts. Data is downloaded by prepare.py from HuggingFace."""
+    parts: list[str] = ["mkdir -p /app"]
     for dest, src in INJECT_FILES.items():
         content = src.read_text(encoding="utf-8")
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
@@ -32,15 +30,6 @@ def _build_file_injection_cmd() -> str:
             f"python3 -c \"import base64; "
             f"open('{dest}','w').write(base64.b64decode('{encoded}').decode('utf-8'))\""
         )
-    # Inject source data files if they exist
-    for name in ("train.jsonl", "val.jsonl"):
-        src = SRC_DATA_DIR / name
-        if src.exists():
-            encoded = base64.b64encode(src.read_bytes()).decode("ascii")
-            parts.append(
-                f"python3 -c \"import base64; "
-                f"open('/app/src_data/{name}','wb').write(base64.b64decode('{encoded}'))\""
-            )
     return " && ".join(parts)
 
 
