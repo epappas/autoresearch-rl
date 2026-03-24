@@ -247,31 +247,38 @@ signals, not statistically rigorous conclusions. Multiple parameters co-vary acr
 6. **Infrastructure reliability:** 100% success rate across 15 Basilica deployments. No
    infrastructure failures in this run (compared to 77% in the earlier prompt-format run).
 
-### LLM Policy vs Grid Search
+### Policy Comparison: LLM vs Grid vs Hybrid
 
-A separate grid search run (episode `01816caf`, 13 iterations) provides a direct baseline
-comparison. Grid search cycles exhaustively through parameter combinations; the LLM policy
-uses experiment history and domain knowledge to propose the next configuration.
+Three runs on the same search space provide a direct comparison across policy strategies:
 
-| Metric | LLM Policy | Grid Search |
-|--------|-----------|-------------|
-| Iterations | 15 | 13 |
-| Best eval_score | **0.36** (iter 1) | 0.35 (iter 7) |
-| Mean eval_score | **0.291** | 0.271 |
-| Iterations to find best | **2** | 8 |
-| Kept improvements | 2 | 4 |
+| Metric | LLM Policy | Grid Search | Hybrid |
+|--------|-----------|-------------|--------|
+| Episode | `b7fa4297` | `01816caf` | `4ab662d4` |
+| Iterations | 15 | 13 | 15 |
+| Best eval_score | **0.36** (iter 1) | 0.35 (iter 7) | 0.35 (iter 13) |
+| Mean eval_score | **0.291** | 0.271 | 0.266 |
+| Iterations to find best | **2** | 8 | 13 |
+| Kept improvements | 2 | 4 | 3 |
+| Diff attempts | 0 | 0 | 3 (all failed) |
 
-The LLM policy reached its best result by iteration 1. Grid search needed 8 iterations
-and 4 incremental improvements (0.28 -> 0.31 -> 0.32 -> 0.35) to approach the same level.
+**LLM vs Grid.** The LLM policy reached 0.36 by iteration 1. Grid search needed 8
+iterations and 4 incremental improvements (0.28 -> 0.31 -> 0.32 -> 0.35). Final scores
+are close (within eval noise at 100 samples), but the LLM's domain knowledge about GRPO
+hyperparameters let it skip the low-performing region that grid had to enumerate.
 
-The final scores are close (0.36 vs 0.35, within eval noise at 100 samples). The
-meaningful difference is **convergence speed**: the LLM policy's domain knowledge about
-GRPO hyperparameters (lr=5e-6 is a known-good starting point for small models) let it
-skip the low-performing region of the search space that grid search had to enumerate.
+**Hybrid mode.** The hybrid run (episode `4ab662d4`) demonstrated the full policy
+lifecycle: param exploration (iters 0-9, found 0.34), diff mode triggered on stall
+(iters 10-12, all 3 failed due to Chutes API 429), automatic fallback to params
+(iters 13-14, pushed to 0.35). The diff mode was correctly triggered and the fallback
+worked as designed, but the LLM API rate limits prevented any code modifications from
+being proposed. With a reliable LLM API, the diff phase would have proposed changes to
+the reward function or training algorithm -- the intended path to break past the param
+search ceiling.
 
-For this well-studied task, the LLM advantage is primarily speed, not final quality.
-The stronger case for LLM-guided search would be in novel settings where prior knowledge
-from the LLM's training data provides genuine insight that uninformed search cannot match.
+**Takeaway.** For this well-studied task, the LLM advantage is convergence speed, not
+final quality. The stronger case for LLM-guided search (and especially hybrid mode's
+code diffs) is in novel settings where uninformed search has no good starting point and
+algorithmic changes can unlock improvements that hyperparameter tuning alone cannot.
 
 ### Training Dynamics
 
