@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -203,6 +204,89 @@ def run_one(
         "iterations": result.iterations,
         "best_value": result.best_value,
         "best_score": result.best_score,
+    }, indent=2))
+
+
+@app.command()
+def upload(
+    config: str = typer.Argument(..., help="Path to config.yaml"),
+    repo: str = typer.Option(..., "--repo", help="HuggingFace Hub repo (e.g. user/model-name)"),
+    private: bool = typer.Option(False, "--private", help="Create private repo"),
+    token_env: str = typer.Option("HF_TOKEN", "--token-env", help="Env var with HF token"),
+) -> None:
+    """Upload the best model version to HuggingFace Hub."""
+    cfg = _load_config(config, [])
+
+    versions_dir = Path(cfg.telemetry.versions_dir)
+    if not versions_dir.exists():
+        raise typer.BadParameter(f"No versions directory: {versions_dir}")
+
+    # Find the best version by scanning version.json files
+    best_version: dict | None = None
+    best_score = float("inf")
+    for vdir in sorted(versions_dir.iterdir()):
+        meta_path = vdir / "version.json"
+        if not meta_path.exists():
+            continue
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        metrics = meta.get("metrics", {})
+        metric_val = metrics.get(cfg.objective.metric)
+        if metric_val is None:
+            continue
+        score = float(metric_val) if cfg.objective.direction == "min" else -float(metric_val)
+        if score < best_score:
+            best_score = score
+            best_version = meta
+
+    if best_version is None:
+        raise typer.BadParameter("No versions with objective metric found")
+
+    model_dir = best_version.get("model_dir")
+    if not model_dir or not Path(model_dir).exists():
+        raise typer.BadParameter(
+            f"Best version (iter {best_version['iter']}) has no model_dir "
+            f"or path does not exist: {model_dir}"
+        )
+
+    token = os.environ.get(token_env)
+    if not token:
+        raise typer.BadParameter(f"{token_env} not set")
+
+    try:
+        from huggingface_hub import HfApi
+    except ImportError:
+        raise typer.BadParameter("pip install huggingface-hub required for upload")
+
+    api = HfApi(token=token)
+    api.create_repo(repo, private=private, exist_ok=True)
+    api.upload_folder(
+        folder_path=model_dir,
+        repo_id=repo,
+        commit_message=(
+            f"autoresearch-rl best model: "
+            f"{cfg.objective.metric}={best_version['metrics'].get(cfg.objective.metric)} "
+            f"(iter {best_version['iter']})"
+        ),
+    )
+
+    # Upload version metadata alongside
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(best_version, f, indent=2)
+        f.flush()
+        api.upload_file(
+            path_or_fileobj=f.name,
+            path_in_repo="autoresearch_version.json",
+            repo_id=repo,
+            commit_message="autoresearch-rl version metadata",
+        )
+        Path(f.name).unlink(missing_ok=True)
+
+    typer.echo(json.dumps({
+        "repo": repo,
+        "iter": best_version["iter"],
+        "metrics": best_version["metrics"],
+        "model_dir": model_dir,
     }, indent=2))
 
 

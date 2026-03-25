@@ -114,6 +114,8 @@ uv run autoresearch-rl run-one config.yaml \
   --params '{"learning_rate": 5e-6}'                       # single iteration
 uv run autoresearch-rl run-one config.yaml \
   --diff reward_improvement.patch                          # apply a code diff
+uv run autoresearch-rl upload config.yaml \
+  --repo user/my-security-judge                            # push best model to HF
 ```
 
 ## Output
@@ -128,10 +130,15 @@ traces/events.jsonl            # structured event trace (proposals, outcomes)
 ```
 
 **Model persistence.** When `model_output_dir` is set in config, the framework injects
-`AR_MODEL_DIR` as an env var into each iteration. The training script saves the model
-(LoRA adapter, full checkpoint, etc.) to that path. On Basilica, this is persistent
-storage (`/data/`) that survives container teardown. The best model's path is recorded
-in `version.json` under `model_dir`.
+`AR_MODEL_DIR` into each iteration. The training script saves the model there. On
+Basilica, the bootstrap HTTP server exposes `/model/files` (listing) and
+`/model/download/<path>` (file download). The controller downloads the model from the
+running container before cleanup. The best model's path is recorded in `version.json`.
+
+After a campaign, push the best model to HuggingFace Hub:
+```bash
+uv run autoresearch-rl upload config.yaml --repo user/my-model
+```
 
 ## Progress chart
 

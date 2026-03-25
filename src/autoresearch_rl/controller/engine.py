@@ -217,6 +217,12 @@ def run_experiment(
             )
 
             outcome = executor.execute(proposal, run_dir)
+
+            # Pick up model dir from target (Basilica downloads it)
+            # or from the injected AR_MODEL_DIR
+            downloaded_model = outcome.metrics.pop("_model_dir", None)
+            effective_model_dir = str(downloaded_model) if downloaded_model else model_dir
+
             value = _objective_value(outcome.metrics, objective)
             status = outcome.status
             if value is None:
@@ -236,7 +242,7 @@ def run_experiment(
                     if enable_versions:
                         _save_version(
                             telemetry.versions_dir, iter_idx, outcome, params,
-                            model_dir=model_dir,
+                            model_dir=effective_model_dir,
                         )
                 else:
                     no_improve_streak += 1

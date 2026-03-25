@@ -15,7 +15,9 @@ import logging
 import os
 import re
 import time
+import urllib.request
 import uuid
+from pathlib import Path
 
 from autoresearch_rl.config import TargetConfig
 from autoresearch_rl.target.interface import RunOutcome
@@ -27,14 +29,58 @@ HEALTH_PORT = 8080
 # Bootstrap script injected into every Basilica deployment.
 # Starts a health-check server, then runs the user command via subprocess.
 _BOOTSTRAP = r"""
-import subprocess, sys, threading, time
+import subprocess, sys, threading, time, json
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path as _Path
+
+_model_dir = __import__("os").environ.get("AR_MODEL_DIR", "")
 
 class _H(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+        elif self.path == "/model/files":
+            self._serve_model_listing()
+        elif self.path.startswith("/model/download/"):
+            self._serve_model_file(self.path[len("/model/download/"):])
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def _serve_model_listing(self):
+        if not _model_dir or not _Path(_model_dir).exists():
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(json.dumps({{"files": [], "model_dir": _model_dir}}).encode())
+            return
+        files = []
+        base = _Path(_model_dir)
+        for f in sorted(base.rglob("*")):
+            if f.is_file():
+                files.append({{"path": str(f.relative_to(base)), "size": f.stat().st_size}})
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"ok")
+        self.wfile.write(json.dumps({{"files": files, "model_dir": _model_dir}}).encode())
+
+    def _serve_model_file(self, rel_path):
+        if not _model_dir:
+            self.send_response(404)
+            self.end_headers()
+            return
+        fpath = _Path(_model_dir) / rel_path
+        if not fpath.exists() or not fpath.is_file():
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Length", str(fpath.stat().st_size))
+        self.end_headers()
+        with open(fpath, "rb") as fp:
+            while chunk := fp.read(65536):
+                self.wfile.write(chunk)
+
     def log_message(self, *a):
         pass
 
@@ -279,6 +325,10 @@ class BasilicaTarget:
                     "%s found %d metrics after %ds",
                     name, len(metrics), int(elapsed_s),
                 )
+                # Download model before cleanup destroys the container
+                model_local = self._download_model(deployment, run_dir)
+                if model_local:
+                    metrics["_model_dir"] = model_local  # type: ignore[assignment]
                 self._cleanup(deployment, name)
                 return RunOutcome(
                     status="ok", metrics=metrics, stdout=logs,
@@ -353,6 +403,44 @@ class BasilicaTarget:
             return deployment.logs(tail=500)
         except Exception:
             return ""
+
+    def _download_model(self, deployment: object, run_dir: str) -> str | None:
+        """Download model files from container's /model/ endpoint to run_dir."""
+        try:
+            base_url = deployment.url.rstrip("/")
+        except Exception:
+            return None
+
+        model_local = str(Path(run_dir) / "model")
+
+        try:
+            # List files
+            listing_url = f"{base_url}/model/files"
+            req = urllib.request.Request(listing_url, method="GET")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            files = data.get("files", [])
+            if not files:
+                return None
+
+            Path(model_local).mkdir(parents=True, exist_ok=True)
+            for entry in files:
+                rel = entry["path"]
+                dl_url = f"{base_url}/model/download/{rel}"
+                dest = Path(model_local) / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                req = urllib.request.Request(dl_url, method="GET")
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    dest.write_bytes(resp.read())
+
+            logger.info(
+                "Downloaded %d model files to %s", len(files), model_local,
+            )
+            return model_local
+        except Exception as exc:
+            logger.warning("Model download failed: %s", exc)
+            return None
 
     def _cleanup(self, deployment: object, name: str) -> None:
         try:
