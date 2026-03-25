@@ -51,6 +51,8 @@ class CommandTarget(TargetAdapter):
         env["AR_PARAMS_JSON"] = json.dumps(params)
         for k, v in params.items():
             env[f"AR_PARAM_{str(k).upper()}"] = str(v)
+        if "AR_MODEL_DIR" in params:
+            env["AR_MODEL_DIR"] = str(params["AR_MODEL_DIR"])
 
         start = time.monotonic()
         cp = subprocess.run(

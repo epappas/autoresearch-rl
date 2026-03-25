@@ -62,3 +62,4 @@ telemetry:
   ledger_path: artifacts/security-judge/results.tsv
   artifacts_dir: artifacts/security-judge/runs
   versions_dir: artifacts/security-judge/versions
+  model_output_dir: /data/models/security-judge

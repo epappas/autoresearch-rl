@@ -137,6 +137,8 @@ class BasilicaTarget:
         }
         for k, v in params.items():
             env[f"AR_PARAM_{str(k).upper()}"] = str(v)
+        if "AR_MODEL_DIR" in params:
+            env["AR_MODEL_DIR"] = str(params["AR_MODEL_DIR"])
 
         # Diff mode: pass modified source directly as env vars
         for diff_key in ("AR_MODIFIED_SOURCE", "AR_MODIFIED_TARGET"):

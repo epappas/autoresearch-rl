@@ -260,6 +260,14 @@ def main() -> None:
     training_seconds = time.time() - t0
     print("Training complete.", flush=True)
 
+    # Save model to AR_MODEL_DIR if configured (framework injects this)
+    model_dir = os.environ.get("AR_MODEL_DIR")
+    if model_dir:
+        Path(model_dir).mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(model_dir)
+        tokenizer.save_pretrained(model_dir)
+        print(f"[model] saved to {model_dir}", flush=True)
+
     print("Evaluating trained model...", flush=True)
     eval_score = evaluate_model(model, tokenizer, eval_data, max_samples=100)
     avg_loss = total_loss / max(max_steps, 1)

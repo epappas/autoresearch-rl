@@ -121,9 +121,17 @@ uv run autoresearch-rl run-one config.yaml \
 ```
 artifacts/results.tsv          # per-iteration scores + comparability metadata
 artifacts/versions/v0001/      # kept iterations (versioned artifacts)
+  version.json                 # params, metrics, model_dir path
 artifacts/checkpoint.json      # resumable state
 traces/events.jsonl            # structured event trace (proposals, outcomes)
+/data/models/v0001/            # trained model checkpoint (if model_output_dir set)
 ```
+
+**Model persistence.** When `model_output_dir` is set in config, the framework injects
+`AR_MODEL_DIR` as an env var into each iteration. The training script saves the model
+(LoRA adapter, full checkpoint, etc.) to that path. On Basilica, this is persistent
+storage (`/data/`) that survives container teardown. The best model's path is recorded
+in `version.json` under `model_dir`.
 
 ## Progress chart
 

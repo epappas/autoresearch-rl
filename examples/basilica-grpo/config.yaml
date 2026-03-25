@@ -62,3 +62,4 @@ telemetry:
   ledger_path: artifacts/basilica-grpo/results.tsv
   artifacts_dir: artifacts/basilica-grpo/runs
   versions_dir: artifacts/basilica-grpo/versions
+  model_output_dir: /data/models/basilica-grpo

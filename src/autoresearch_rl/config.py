@@ -108,6 +108,7 @@ class TelemetryConfig(BaseModel):
     ledger_path: str = "artifacts/results.tsv"
     artifacts_dir: str = "artifacts/runs"
     versions_dir: str = "artifacts/versions"
+    model_output_dir: str | None = None
     max_file_size_bytes: int = 50 * 1024 * 1024  # 50MB
     max_rotated_files: int = 5
 

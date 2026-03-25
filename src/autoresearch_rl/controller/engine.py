@@ -60,17 +60,20 @@ def _score(value: float, objective: ObjectiveConfig) -> float:
 
 
 def _save_version(
-    versions_dir: str, iter_idx: int, outcome: Outcome, params: dict
+    versions_dir: str, iter_idx: int, outcome: Outcome, params: dict,
+    model_dir: str | None = None,
 ) -> str:
     target_dir = Path(versions_dir) / f"v{iter_idx:04d}"
     target_dir.mkdir(parents=True, exist_ok=True)
-    meta = {
+    meta: dict = {
         "iter": iter_idx,
         "metrics": outcome.metrics,
         "params": params,
         "status": outcome.status,
         "run_dir": outcome.run_dir,
     }
+    if model_dir:
+        meta["model_dir"] = model_dir
     (target_dir / "version.json").write_text(
         json.dumps(meta, indent=2), encoding="utf-8"
     )
@@ -192,6 +195,14 @@ def run_experiment(
 
             run_dir = str(Path(telemetry.artifacts_dir) / f"run-{iter_idx:04d}")
 
+            # Inject model output directory if configured
+            model_dir: str | None = None
+            if telemetry.model_output_dir:
+                model_dir = str(
+                    Path(telemetry.model_output_dir) / f"v{iter_idx:04d}"
+                )
+                params["AR_MODEL_DIR"] = model_dir
+
             emit(
                 telemetry.trace_path,
                 {
@@ -224,7 +235,8 @@ def run_experiment(
                     no_improve_streak = 0
                     if enable_versions:
                         _save_version(
-                            telemetry.versions_dir, iter_idx, outcome, params
+                            telemetry.versions_dir, iter_idx, outcome, params,
+                            model_dir=model_dir,
                         )
                 else:
                     no_improve_streak += 1
