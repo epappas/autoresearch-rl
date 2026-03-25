@@ -47,7 +47,8 @@ Runtime path: `cli.py` -> `controller/continuous.py` -> `target/*` -> `telemetry
   - `policy/llm_diff.py`: `LLMDiffPolicy` proposes code modifications as unified diffs with correction retry on validation failure
   - `policy/hybrid.py`: `HybridPolicy` starts with param exploration, switches to code diffs when params stall, falls back to param mode on consecutive diff failures
   - `policy/learned.py` + `policy/learned_search.py`: learned policy using PPO-style updates
-- **Controller** (`controller/continuous.py`): Orchestrates the loop with stop guards (wall time, no-improvement streak, failure rate). Each iteration: propose params -> train -> eval -> keep/discard -> emit telemetry
+- **Model artifact persistence**: When `telemetry.model_output_dir` is set, the engine injects `AR_MODEL_DIR` (versioned path) into each iteration. On Basilica, the bootstrap HTTP server exposes `/model/files` and `/model/download/<path>` so the controller can download trained model checkpoints before container cleanup. The `upload` CLI subcommand pushes the best model to HuggingFace Hub.
+- **Controller** (`controller/continuous.py`): Orchestrates the loop with stop guards (wall time, no-improvement streak, failure rate). Each iteration: propose params -> train -> eval -> keep/discard -> download model -> emit telemetry
 - **Config** (`config.py`): Pydantic models for all config sections. YAML config validated via `RunConfig.model_validate()`
 
 ### 2. Legacy contract/sandbox loop (not used by CLI)

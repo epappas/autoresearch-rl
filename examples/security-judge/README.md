@@ -46,6 +46,16 @@ prints metrics. No import between them.
 4. The LLM in diff mode can propose reward function improvements, LoRA target changes,
    or generation strategy modifications to `train.py`.
 
+## Model Persistence
+
+Each iteration saves the LoRA adapter to `$AR_MODEL_DIR` (injected by the framework).
+On Basilica, the controller downloads the model via HTTP before container cleanup.
+After a campaign, push the best adapter to HuggingFace:
+
+```bash
+uv run autoresearch-rl upload examples/security-judge/config.yaml --repo user/security-judge
+```
+
 ## Files
 
 | File | Role |

@@ -83,8 +83,17 @@ import between them -- they communicate via the filesystem.
 | `prepare.py` | Frozen -- pipeline step, runs once via `prepare_cmd` |
 | `program.md` | Task spec provided to the LLM as context |
 
+## Model Persistence
+
+When `model_output_dir` is set in config, each iteration receives `$AR_MODEL_DIR` and
+can save trained checkpoints there. After a campaign, push to HuggingFace:
+
+```bash
+uv run autoresearch-rl upload examples/autoresearch-like/config.yaml --repo user/model
+```
+
 ## Artifacts
 
-- `artifacts/autoresearch-like/results.tsv` — per-iteration scores
-- `artifacts/autoresearch-like/versions/` — kept iterations
-- `artifacts/autoresearch-like/checkpoint.json` — resumable state
+- `artifacts/autoresearch-like/results.tsv` -- per-iteration scores
+- `artifacts/autoresearch-like/versions/` -- kept iterations (with model_dir if configured)
+- `artifacts/autoresearch-like/checkpoint.json` -- resumable state

@@ -334,9 +334,14 @@ setup_cmd (pip install)  ->  prepare_cmd (prepare.py)  ->  train_cmd (train.py)
 4. `train_cmd`: runs `train.py` which reads the prepared data, trains with GRPO,
    evaluates, and prints metrics to stdout. No import dependency on prepare.py.
 5. Both scripts injected via base64 encoding in deploy.py
-6. Health server runs in daemon thread for Basilica liveness probes
-7. Adapter polls for known metric keys (`eval_score`, `loss`, etc.) in stdout
-8. Container cleanup via Basilica API after each iteration
+6. Health server runs in daemon thread for Basilica liveness probes, and also
+   exposes `/model/files` and `/model/download/<path>` for model artifact retrieval
+7. `train.py` saves the trained model to `$AR_MODEL_DIR` (injected by the framework)
+8. Adapter polls for known metric keys (`eval_score`, `loss`, etc.) in stdout
+9. On success, controller downloads model files via HTTP before container cleanup
+10. Container cleanup via Basilica API; model already safe locally
+11. After campaign: `autoresearch-rl upload config.yaml --repo user/model` pushes
+    the best version to HuggingFace Hub
 
 ### Key Engineering Decisions
 

@@ -57,13 +57,28 @@ python3 examples/basilica-grpo/deploy.py --policy grid
 ## Pipeline
 
 ```
-prepare.py  -->  /app/data/{train,eval}.jsonl  -->  train.py  -->  [metrics]
+prepare.py  -->  /app/data/{train,eval}.jsonl  -->  train.py  -->  [metrics + model]
 (runs once)       (frozen data boundary)            (each iter)    (keep/discard)
+                                                        |
+                                                        v
+                                              saves to $AR_MODEL_DIR
+                                              controller downloads via HTTP
 ```
 
 `prepare.py` is a config-driven pipeline step (`prepare_cmd` in config.yaml). It runs once
 per container before `train.py`. There is no Python import between them -- they communicate
 via JSONL data files on disk.
+
+## Model Persistence
+
+When `model_output_dir` is set in config, each iteration saves the trained model to
+`$AR_MODEL_DIR`. On Basilica, the bootstrap HTTP server exposes the model at
+`/model/files` and `/model/download/<path>`. The controller downloads it before
+destroying the container. After a campaign:
+
+```bash
+uv run autoresearch-rl upload examples/basilica-grpo/config.yaml --repo user/grpo-qwen
+```
 
 ## Files
 
@@ -75,12 +90,13 @@ via JSONL data files on disk.
 
 ## GPU Requirements
 
-- 1× A100 or H100 (24GB+ VRAM)
-- ~32GB system memory
-- ~15–20 minutes per iteration
+- 1x A100 (24GB+ VRAM)
+- ~48GB system memory
+- ~15-20 minutes per iteration
 
 ## Artifacts
 
-- `artifacts/basilica-grpo/results.tsv` — per-iteration scores
-- `artifacts/basilica-grpo/versions/` — kept iterations
-- `artifacts/basilica-grpo/checkpoint.json` — resumable state
+- `artifacts/basilica-grpo/results.tsv` -- per-iteration scores
+- `artifacts/basilica-grpo/versions/v####/` -- kept iterations with model_dir path
+- `artifacts/basilica-grpo/checkpoint.json` -- resumable state
+- `/data/models/basilica-grpo/v####/` -- trained model checkpoints (Basilica persistent storage)

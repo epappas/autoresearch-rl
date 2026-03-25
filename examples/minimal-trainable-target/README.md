@@ -77,5 +77,5 @@ LLM each iteration. No Python import between them.
 
 Use for:
 - End-to-end loop validation without GPU or network
-- Testing `status` / `run-one` agentic commands locally
+- Testing `status` / `run-one` / `upload` commands locally
 - Rapid iteration on policy and controller logic
