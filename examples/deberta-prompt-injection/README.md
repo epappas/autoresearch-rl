@@ -21,16 +21,16 @@ bash examples/deberta-prompt-injection/run.sh
 ```bash
 # Check experiment state (JSON output — agent-readable)
 uv run autoresearch-rl status \
-  --config examples/deberta-prompt-injection/config.yaml --last 5
+  examples/deberta-prompt-injection/config.yaml --last 5
 
 # Inject explicit hyperparameters and run one iteration
 uv run autoresearch-rl run-one \
-  --config examples/deberta-prompt-injection/config.yaml \
+  examples/deberta-prompt-injection/config.yaml \
   --params '{"learning_rate": 0.00002, "epochs": 2, "batch_size": 8}'
 
 # Inject a code diff and run one iteration
 uv run autoresearch-rl run-one \
-  --config examples/deberta-prompt-injection/config.yaml \
+  examples/deberta-prompt-injection/config.yaml \
   --diff path/to/change.patch
 ```
 
