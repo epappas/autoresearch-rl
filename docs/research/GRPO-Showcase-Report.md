@@ -362,7 +362,7 @@ setup_cmd (pip install)  ->  prepare_cmd (prepare.py)  ->  train_cmd (train.py)
 
 ## Progress Chart
 
-![GRPO Progress](../../grpo_progress.png)
+![GRPO Progress](grpo_progress.png)
 
 The chart shows the Karpathy-style scatter plot with:
 - Gray dots: discarded experiments (did not improve the best)

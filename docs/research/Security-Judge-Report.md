@@ -159,7 +159,7 @@ spend at least a day of GPU time (~$72 at A100 rates) to explore the same space.
 
 ## Progress Chart
 
-![Security Judge Progress](../../security_judge_progress.png)
+![Security Judge Progress](security_judge_progress.png)
 
 The chart shows the Karpathy-style scatter plot. The step function reveals the progression:
 slow climbing from 0.43 to 0.62 over 20 iterations (score calibration improvements), then
