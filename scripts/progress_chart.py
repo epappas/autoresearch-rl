@@ -21,10 +21,15 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import io
+
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.image as mpimg  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
-import matplotlib.font_manager as fm  # noqa: E402
+from matplotlib.offsetbox import AnnotationBbox, OffsetImage  # noqa: E402
+
+LOGO_PNG = Path(__file__).parent / "basilica_logo.png"
 
 # -- Covenant Labs Color Palette --
 RED = "#FF3A3A"
@@ -200,7 +205,19 @@ def plot_progress(
         margin = (ymax - ymin) * 0.15 if ymax > ymin else 0.05
         ax.set_ylim(ymin - margin, ymax + margin)
 
-    fig.tight_layout()
+    # Basilica logo (bottom right)
+    if LOGO_PNG.exists():
+        logo_img = mpimg.imread(str(LOGO_PNG))
+        imagebox = OffsetImage(logo_img, zoom=0.55, alpha=0.7)
+        ab = AnnotationBbox(
+            imagebox, (0.98, 0.04),
+            xycoords="figure fraction",
+            box_alignment=(1.0, 0.0),
+            frameon=False,
+        )
+        fig.add_artist(ab)
+
+    fig.tight_layout(rect=[0, 0.04, 1, 1])
     fig.savefig(output, dpi=150, facecolor=BLK1000, edgecolor="none")
     plt.close(fig)
 
