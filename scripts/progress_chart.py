@@ -175,8 +175,8 @@ def plot_progress(
             row = rows[xi]
             ax.annotate(
                 f"iter {row.iter}", (xi, yi),
-                textcoords="offset points", xytext=(6, 14),
-                fontsize=13, color=WHT100ALT, fontweight="bold",
+                textcoords="offset points", xytext=(8, 18),
+                fontsize=26, color=WHT100ALT, fontweight="bold",
             )
 
     n_total = len(rows)
@@ -195,8 +195,8 @@ def plot_progress(
 
     legend = ax.legend(
         loc="upper right" if direction == "min" else "lower right",
-        fontsize=15, framealpha=0.9, edgecolor=BLK800,
-        facecolor=BLK1000,
+        fontsize=20, framealpha=0.9, edgecolor=BLK800,
+        facecolor=BLK1000, markerscale=1.5,
     )
     for text in legend.get_texts():
         text.set_color(WHT100ALT)
