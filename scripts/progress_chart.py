@@ -115,35 +115,35 @@ def plot_progress(
                 best = min(best, r.metric_value)
         running_best.append(best if best != float("inf") and best != float("-inf") else 0.0)
 
-    # -- Covenant Labs styled figure --
+    # -- Covenant Labs dark theme --
     fig, ax = plt.subplots(figsize=(16, 8))
-    fig.set_facecolor(WHT0)
-    ax.set_facecolor(WHT0)
+    fig.set_facecolor(BLK1000)
+    ax.set_facecolor(BLK1000)
 
-    # Grid
-    ax.grid(True, color=WHT100ALT, linewidth=0.8, zorder=0)
+    # Grid: subtle against dark background
+    ax.grid(True, color=BLK800, linewidth=0.6, zorder=0)
     ax.set_axisbelow(True)
 
     # Spine styling
     for spine in ax.spines.values():
-        spine.set_color(WHT100ALT)
+        spine.set_color(BLK800)
         spine.set_linewidth(0.8)
 
-    # Tick styling
+    # Tick styling: light text on dark
     ax.tick_params(colors=BLK500, labelsize=10)
 
-    # Discarded: medium gray
+    # Discarded: muted gray
     if xs_discard:
         ax.scatter(
             xs_discard, ys_discard,
-            c=BLK500, s=50, alpha=0.35, zorder=2, label="Discarded",
+            c=BLK500, s=50, alpha=0.4, zorder=2, label="Discarded",
         )
 
     # Failed: red x
     if xs_fail:
         ax.scatter(
             xs_fail, [max(ys_keep or ys_discard or [0]) * 0.01] * len(xs_fail),
-            c=RED, s=30, alpha=0.5, marker="x", linewidths=1.5,
+            c=RED, s=30, alpha=0.6, marker="x", linewidths=1.5,
             zorder=2, label="Failed",
         )
 
@@ -151,7 +151,7 @@ def plot_progress(
     if xs_keep:
         ax.scatter(
             xs_keep, ys_keep,
-            c=GREEN, s=90, edgecolors=BLK1000, linewidths=0.8,
+            c=GREEN, s=90, edgecolors=WHT0, linewidths=0.8,
             zorder=3, label="Kept (improvement)",
         )
 
@@ -159,7 +159,7 @@ def plot_progress(
     valid_running = [(i, v) for i, v in enumerate(running_best) if v > 0]
     if valid_running:
         rx, ry = zip(*valid_running)
-        ax.step(rx, ry, where="post", color=RED, alpha=0.8, linewidth=2.5, zorder=4)
+        ax.step(rx, ry, where="post", color=RED, alpha=0.85, linewidth=2.5, zorder=4)
 
     # Annotate kept experiments
     for xi, yi in zip(xs_keep, ys_keep):
@@ -168,7 +168,7 @@ def plot_progress(
         ax.annotate(
             label, (xi, yi),
             textcoords="offset points", xytext=(5, 10),
-            fontsize=8, color=BLK800, fontweight="medium",
+            fontsize=8, color=WHT100ALT, fontweight="medium",
         )
 
     n_total = len(rows)
@@ -181,17 +181,17 @@ def plot_progress(
         f"autoresearch-rl: {n_total} experiments, "
         f"{n_kept} kept, {n_failed} failed"
     )
-    ax.set_title(chart_title, fontsize=15, fontweight="bold", color=BLK1000, pad=16)
-    ax.set_xlabel("Experiment #", fontsize=12, color=BLK800)
-    ax.set_ylabel(f"{metric_name} ({dir_label})", fontsize=12, color=BLK800)
+    ax.set_title(chart_title, fontsize=15, fontweight="bold", color=WHT0, pad=16)
+    ax.set_xlabel("Experiment #", fontsize=12, color=BLK500)
+    ax.set_ylabel(f"{metric_name} ({dir_label})", fontsize=12, color=BLK500)
 
     legend = ax.legend(
         loc="upper right" if direction == "min" else "lower right",
-        fontsize=10, framealpha=0.9, edgecolor=WHT100ALT,
-        facecolor=WHT0,
+        fontsize=10, framealpha=0.9, edgecolor=BLK800,
+        facecolor=BLK1000,
     )
     for text in legend.get_texts():
-        text.set_color(BLK800)
+        text.set_color(WHT100ALT)
 
     # Y-axis range with margin
     all_values = [v for v in ys_keep + ys_discard if v > 0]
@@ -201,7 +201,7 @@ def plot_progress(
         ax.set_ylim(ymin - margin, ymax + margin)
 
     fig.tight_layout()
-    fig.savefig(output, dpi=150, facecolor=WHT0, edgecolor="none")
+    fig.savefig(output, dpi=150, facecolor=BLK1000, edgecolor="none")
     plt.close(fig)
 
     best_val = max(ys_keep) if direction == "max" and ys_keep else (
