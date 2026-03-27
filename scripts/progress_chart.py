@@ -166,15 +166,18 @@ def plot_progress(
         rx, ry = zip(*valid_running)
         ax.step(rx, ry, where="post", color=RED, alpha=0.85, linewidth=3, zorder=4)
 
-    # Annotate kept experiments
-    for xi, yi in zip(xs_keep, ys_keep):
-        row = rows[xi]
-        label = f"iter {row.iter}"
-        ax.annotate(
-            label, (xi, yi),
-            textcoords="offset points", xytext=(6, 14),
-            fontsize=13, color=WHT100ALT, fontweight="bold",
-        )
+    # Annotate first and last kept experiments only
+    if xs_keep:
+        for xi, yi in [
+            (xs_keep[0], ys_keep[0]),
+            (xs_keep[-1], ys_keep[-1]),
+        ]:
+            row = rows[xi]
+            ax.annotate(
+                f"iter {row.iter}", (xi, yi),
+                textcoords="offset points", xytext=(6, 14),
+                fontsize=13, color=WHT100ALT, fontweight="bold",
+            )
 
     n_total = len(rows)
     n_kept = len(xs_keep)
