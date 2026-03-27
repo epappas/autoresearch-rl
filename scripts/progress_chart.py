@@ -135,20 +135,20 @@ def plot_progress(
         spine.set_linewidth(0.8)
 
     # Tick styling: light text on dark
-    ax.tick_params(colors=BLK500, labelsize=10)
+    ax.tick_params(colors=BLK500, labelsize=16)
 
     # Discarded: muted gray
     if xs_discard:
         ax.scatter(
             xs_discard, ys_discard,
-            c=BLK500, s=50, alpha=0.4, zorder=2, label="Discarded",
+            c=BLK500, s=70, alpha=0.4, zorder=2, label="Discarded",
         )
 
     # Failed: red x
     if xs_fail:
         ax.scatter(
             xs_fail, [max(ys_keep or ys_discard or [0]) * 0.01] * len(xs_fail),
-            c=RED, s=30, alpha=0.6, marker="x", linewidths=1.5,
+            c=RED, s=50, alpha=0.6, marker="x", linewidths=2,
             zorder=2, label="Failed",
         )
 
@@ -156,7 +156,7 @@ def plot_progress(
     if xs_keep:
         ax.scatter(
             xs_keep, ys_keep,
-            c=GREEN, s=90, edgecolors=WHT0, linewidths=0.8,
+            c=GREEN, s=130, edgecolors=WHT0, linewidths=1.0,
             zorder=3, label="Kept (improvement)",
         )
 
@@ -164,7 +164,7 @@ def plot_progress(
     valid_running = [(i, v) for i, v in enumerate(running_best) if v > 0]
     if valid_running:
         rx, ry = zip(*valid_running)
-        ax.step(rx, ry, where="post", color=RED, alpha=0.85, linewidth=2.5, zorder=4)
+        ax.step(rx, ry, where="post", color=RED, alpha=0.85, linewidth=3, zorder=4)
 
     # Annotate kept experiments
     for xi, yi in zip(xs_keep, ys_keep):
@@ -172,8 +172,8 @@ def plot_progress(
         label = f"iter {row.iter}"
         ax.annotate(
             label, (xi, yi),
-            textcoords="offset points", xytext=(5, 10),
-            fontsize=8, color=WHT100ALT, fontweight="medium",
+            textcoords="offset points", xytext=(6, 14),
+            fontsize=13, color=WHT100ALT, fontweight="bold",
         )
 
     n_total = len(rows)
@@ -186,13 +186,13 @@ def plot_progress(
         f"autoresearch-rl: {n_total} experiments, "
         f"{n_kept} kept, {n_failed} failed"
     )
-    ax.set_title(chart_title, fontsize=15, fontweight="bold", color=WHT0, pad=16)
-    ax.set_xlabel("Experiment #", fontsize=12, color=BLK500)
-    ax.set_ylabel(f"{metric_name} ({dir_label})", fontsize=12, color=BLK500)
+    ax.set_title(chart_title, fontsize=22, fontweight="bold", color=WHT0, pad=20)
+    ax.set_xlabel("Experiment #", fontsize=18, color=BLK500)
+    ax.set_ylabel(f"{metric_name} ({dir_label})", fontsize=18, color=BLK500)
 
     legend = ax.legend(
         loc="upper right" if direction == "min" else "lower right",
-        fontsize=10, framealpha=0.9, edgecolor=BLK800,
+        fontsize=15, framealpha=0.9, edgecolor=BLK800,
         facecolor=BLK1000,
     )
     for text in legend.get_texts():
@@ -208,7 +208,7 @@ def plot_progress(
     # Basilica logo (bottom right)
     if LOGO_PNG.exists():
         logo_img = mpimg.imread(str(LOGO_PNG))
-        imagebox = OffsetImage(logo_img, zoom=0.55, alpha=0.7)
+        imagebox = OffsetImage(logo_img, zoom=0.7, alpha=0.7)
         ab = AnnotationBbox(
             imagebox, (0.98, 0.04),
             xycoords="figure fraction",
