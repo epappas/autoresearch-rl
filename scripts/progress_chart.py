@@ -168,15 +168,18 @@ def plot_progress(
 
     # Annotate first and last kept experiments only
     if xs_keep:
-        for xi, yi in [
+        for idx, (xi, yi) in enumerate([
             (xs_keep[0], ys_keep[0]),
             (xs_keep[-1], ys_keep[-1]),
-        ]:
+        ]):
             row = rows[xi]
+            # First label below the point to avoid the step line
+            offset = (8, -24) if idx == 0 else (8, 18)
             ax.annotate(
                 f"iter {row.iter}", (xi, yi),
-                textcoords="offset points", xytext=(8, 18),
+                textcoords="offset points", xytext=offset,
                 fontsize=16, color=WHT100ALT, fontweight="bold",
+                zorder=10,
             )
 
     n_total = len(rows)
