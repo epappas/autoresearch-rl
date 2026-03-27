@@ -196,7 +196,7 @@ def plot_progress(
     legend = ax.legend(
         loc="upper right" if direction == "min" else "lower right",
         fontsize=12, framealpha=0.9, edgecolor=BLK800,
-        facecolor=BLK1000, markerscale=1.5,
+        facecolor=BLK1000, markerscale=1.2,
     )
     for text in legend.get_texts():
         text.set_color(WHT100ALT)
