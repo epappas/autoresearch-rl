@@ -281,6 +281,26 @@ def run_continuous(
         )
 
     policy = _policy_from_config(policy_cfg, objective)
+
+    if controller.parallel.enabled and policy_cfg.type not in {"llm_diff", "hybrid"}:
+        # Diff-mode policies stay serial — k concurrent diffs fight the
+        # frozen/mutable contract (see RLix-Adoption-Plan §4.2).
+        from autoresearch_rl.controller.parallel_engine import run_experiment_parallel
+        return run_experiment_parallel(
+            executor=TargetExecutor(target),
+            policy=policy,
+            objective=objective,
+            controller=controller,
+            telemetry=telemetry,
+            comparability_cfg=comparability_cfg,
+            proposal_state_builder=_param_state_builder,
+            proposal_params_extractor=_param_extractor,
+            program=program,
+            description_label="continuous-parallel",
+            target=target,
+            manifest_config=manifest_config,
+        )
+
     return run_experiment(
         executor=TargetExecutor(target),
         evaluator=MetricEvaluator(),

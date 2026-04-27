@@ -17,6 +17,9 @@ Per RLix-Adoption-Remediation.md R4.a: track wall-clock per phase to recalibrate
 | 2026-04-27 | Phase 2 + 7.3 | M | ~1.5h — IntraIterationGuard + engine wiring + cancelled status + required_calls AST guardrail + 15 tests | Basilica cancel propagation deferred to follow-up; failure_rate now ignores cancelled |
 | 2026-04-27 | Phase 3 (timeline) | S | ~45m — TimelineRecorder + engine + Basilica + LLM spans + 8 tests + e2e proof | one bad multi-line edit corrupted basilica indentation; caught on next test run, fixed in 2 edits |
 | 2026-04-27 | M1+M2+M3 (mypy debt) | S | ~30m — Protocol for Deployment, type-ignore for SDK stubs, narrow runner.py fixes | mypy now green (0 errors in 63 files) for the first time |
+| 2026-04-27 | Phase 4A propose_batch | S | ~45m — Protocol method + native impls + LLMParamPolicy.propose_batch + 14 tests | seeded random batch is bit-identical to k serial draws — important for reproducibility |
+| 2026-04-27 | Phase 4B ResourcePool | S | ~30m — bin-packing pool + ParallelConfig + resource_cost helper + 13 tests | concise; took the simple path |
+| 2026-04-27 | Phase 4C parallel_engine | M | ~2.5h — parallel_engine.py + R3.a + R3.b + 7 tests + e2e CLI proof | first attempt serialized via env-lock; tests caught it; restructured into in_flight + completed dicts with min-iter draining |
 
 ## Recalibration after first 10 PRs
 
