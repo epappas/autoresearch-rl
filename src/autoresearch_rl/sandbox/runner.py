@@ -195,6 +195,12 @@ def run_trial(
             if not worktree_dir:
                 return TrialResult(status="rejected", timeout_s=timeout_s, diff_len=len(diff), elapsed_s=0.0, stderr=reason)
             trial_workdir = worktree_dir
+        if trial_workdir is None:
+            return TrialResult(
+                status="rejected", timeout_s=timeout_s, diff_len=len(diff),
+                elapsed_s=0.0,
+                stderr="apply_patch=True requires workdir to be set",
+            )
         ok, reason = _apply_patch_with_git(diff=diff, workdir=trial_workdir, auto_init_git=auto_init_git)
         if not ok:
             return TrialResult(
@@ -259,8 +265,13 @@ def run_trial(
                 forecast_bad = False
                 if es.forecast_enabled:
                     points = parse_metric_series("".join(out_lines))
-                    series = [(p.t, p.val_bpb if es.forecast_metric == "val_bpb" else p.loss) for p in points]
-                    series = [(t, v) for t, v in series if v is not None]
+                    series_opt = [
+                        (p.t, p.val_bpb if es.forecast_metric == "val_bpb" else p.loss)
+                        for p in points
+                    ]
+                    series: list[tuple[float, float]] = [
+                        (t, v) for t, v in series_opt if v is not None
+                    ]
                     if len(series) >= es.forecast_min_points:
                         t_max = es.forecast_t_max_s or float(timeout_s)
                         predicted = _forecast_value(series, t_max)

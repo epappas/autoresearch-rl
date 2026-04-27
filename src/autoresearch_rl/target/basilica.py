@@ -19,12 +19,29 @@ import time
 import urllib.request
 import uuid
 from pathlib import Path
+from typing import Protocol
 
 from autoresearch_rl.config import TargetConfig
 from autoresearch_rl.target.interface import RunOutcome
 from autoresearch_rl.telemetry.timeline import global_span
 
 logger = logging.getLogger(__name__)
+
+
+class _DeploymentStatus(Protocol):
+    is_ready: bool
+    is_failed: bool
+
+
+class _Deployment(Protocol):
+    """Subset of basilica.Deployment we use. Lets mypy check call sites
+    without the SDK installed at type-check time."""
+
+    url: str
+
+    def status(self) -> _DeploymentStatus: ...
+    def logs(self, *, tail: int = ...) -> str: ...
+    def delete(self) -> None: ...
 
 HEALTH_PORT = 8080
 
@@ -151,7 +168,7 @@ class BasilicaTarget:
 
     def __init__(self, cfg: TargetConfig) -> None:
         try:
-            from basilica import BasilicaClient
+            from basilica import BasilicaClient  # type: ignore[import-not-found]
         except ImportError as e:
             raise ImportError(
                 "basilica-sdk required. Install: pip install basilica-sdk"
@@ -210,7 +227,7 @@ class BasilicaTarget:
         cmd: list[str] | None,
         phase: str,
     ) -> RunOutcome:
-        from basilica import (
+        from basilica import (  # type: ignore[import-not-found]
             Deployment, HealthCheckConfig, ProbeConfig,
         )
 
@@ -303,7 +320,7 @@ class BasilicaTarget:
 
     def _wait_and_collect(
         self,
-        deployment: object,
+        deployment: _Deployment,
         name: str,
         t0: float,
         run_dir: str,
@@ -360,7 +377,7 @@ class BasilicaTarget:
 
     def _poll_for_metrics(
         self,
-        deployment: object,
+        deployment: _Deployment,
         name: str,
         t0: float,
         run_dir: str,
@@ -435,7 +452,7 @@ class BasilicaTarget:
             deployment, name, t0, run_dir, "timeout"
         )
 
-    def _fetch_progress(self, deployment: object, progress_path: Path) -> int:
+    def _fetch_progress(self, deployment: _Deployment, progress_path: Path) -> int:
         """Append /progress snapshot to local progress.jsonl. Returns new file size.
 
         Best-effort. Network errors are silent; the existing log-poll path is
@@ -462,7 +479,7 @@ class BasilicaTarget:
 
     def _collect_from_logs(
         self,
-        deployment: object,
+        deployment: _Deployment,
         name: str,
         t0: float,
         run_dir: str,
@@ -508,13 +525,13 @@ class BasilicaTarget:
                 lines.append(line)
         return "\n".join(lines)
 
-    def _safe_logs(self, deployment: object) -> str:
+    def _safe_logs(self, deployment: _Deployment) -> str:
         try:
             return deployment.logs(tail=500)
         except Exception:
             return ""
 
-    def _download_model(self, deployment: object, run_dir: str) -> str | None:
+    def _download_model(self, deployment: _Deployment, run_dir: str) -> str | None:
         """Download model files from container's /model/ endpoint to run_dir."""
         try:
             base_url = deployment.url.rstrip("/")
@@ -552,7 +569,7 @@ class BasilicaTarget:
             logger.warning("Model download failed: %s", exc)
             return None
 
-    def _cleanup(self, deployment: object, name: str) -> None:
+    def _cleanup(self, deployment: _Deployment, name: str) -> None:
         try:
             deployment.delete()
             logger.info("Cleaned up %s", name)

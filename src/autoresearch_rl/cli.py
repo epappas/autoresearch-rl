@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from autoresearch_rl.config import RunConfig
 from autoresearch_rl.config_validate import has_blocking_errors, validate_runtime
@@ -266,7 +266,7 @@ def upload(
         raise typer.BadParameter(f"{token_env} not set")
 
     try:
-        from huggingface_hub import HfApi
+        from huggingface_hub import HfApi  # type: ignore[import-not-found]
     except ImportError:
         raise typer.BadParameter("pip install huggingface-hub required for upload")
 
