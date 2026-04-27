@@ -1,0 +1,7 @@
+[
+  {"iter": 0, "status": "ok", "decision": "keep", "metrics": {"loss": 0.42}, "params": {"learning_rate": 0.001}},
+  {"iter": 1, "status": "ok", "decision": "discard", "metrics": {"loss": 0.51}, "params": {"learning_rate": 0.005}},
+  {"iter": 2, "status": "cancelled", "decision": "cancelled", "metrics": {"loss": 0.85}, "params": {"learning_rate": 0.01}},
+  {"iter": 3, "status": "cancelled", "decision": "cancelled", "metrics": {"loss": 0.91}, "params": {"learning_rate": 0.02}},
+  {"iter": 4, "status": "cancelled", "decision": "cancelled", "metrics": {"loss": 0.88}, "params": {"learning_rate": 0.05}}
+]

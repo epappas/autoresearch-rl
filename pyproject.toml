@@ -45,3 +45,4 @@ markers = [
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["tests/eval/fixtures"]
