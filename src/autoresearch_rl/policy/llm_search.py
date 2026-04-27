@@ -288,6 +288,43 @@ def _random_fallback(
     return ParamProposal(params=params, rationale="llm-fallback-random")
 
 
+def _parse_batch_response(
+    raw: str, space: dict[str, list[Any]], k: int,
+) -> list[ParamProposal]:
+    """Extract a JSON array of k proposal dicts. Strict on count + shape."""
+    text = raw.strip()
+    fence = re.search(r"```(?:json)?\s*\n?(.*)", text, re.DOTALL)
+    if fence:
+        text = re.sub(r"\s*```\s*$", "", fence.group(1)).strip()
+    start = text.find("[")
+    end = text.rfind("]")
+    if start < 0 or end <= start:
+        raise ValueError(f"No JSON array found in batch response: {raw[:200]}")
+    array = json.loads(text[start : end + 1])
+    if not isinstance(array, list):
+        raise ValueError(f"Expected list, got {type(array).__name__}")
+    if len(array) != k:
+        raise ValueError(f"Expected {k} proposals, got {len(array)}")
+
+    out: list[ParamProposal] = []
+    for i, item in enumerate(array):
+        if not isinstance(item, dict):
+            raise ValueError(f"Element {i} is {type(item).__name__}, not dict")
+        params: dict[str, Any] = {}
+        for key, allowed in space.items():
+            if key not in item:
+                raise ValueError(f"Element {i} missing key '{key}'")
+            coerced = _coerce_value(item[key], allowed)
+            if coerced is None:
+                raise ValueError(
+                    f"Element {i} value {item[key]!r} for '{key}' "
+                    f"not in allowed: {allowed}"
+                )
+            params[key] = coerced
+        out.append(ParamProposal(params=params, rationale="llm-batch"))
+    return out
+
+
 class LLMParamPolicy:
     """Calls an OpenAI-compatible chat API to propose hyperparameters.
 
@@ -356,6 +393,57 @@ class LLMParamPolicy:
         except Exception:
             logger.warning("LLM policy failed, falling back to random", exc_info=True)
             return _random_fallback(self._space, self._rng)
+
+    def propose_batch(self, state: dict, k: int) -> list[ParamProposal]:
+        """Phase 7.4: ask the LLM for k diverse proposals in one chat call.
+
+        Cheaper and (empirically) more diverse than k independent calls.
+        Falls back to k seeded-random draws on parse failure or missing API
+        key. Diversity hint sent in the user prompt; system prompt already
+        carries BATCH_DIVERSITY_RULES from _prompt_fragments.
+        """
+        if k <= 1:
+            return [self.propose(state)] if k == 1 else []
+
+        history: list[dict] = state.get("history", [])
+        program: str = state.get("program", "")
+        source: str = state.get("source", "")
+        api_key = os.environ.get(self._api_key_env)
+        if not api_key:
+            logger.warning(
+                "LLM policy: %s not set, falling back to %d random",
+                self._api_key_env, k,
+            )
+            return [_random_fallback(self._space, self._rng) for _ in range(k)]
+
+        try:
+            base = _format_prompt(
+                self._space, history, self._metric, self._direction,
+                program=program, source=source,
+            )
+            user_msg = (
+                base + "\n\n"
+                + f"Return a JSON ARRAY of EXACTLY {k} diverse proposals "
+                + "(no prose, no fences). Each element must be an object "
+                + "matching the search space. Diversity dimensions to vary: "
+                + "primary numeric params should differ by at least 4x where "
+                + "possible. Do NOT duplicate prior history entries. Example: "
+                + '[{"learning_rate": 1e-5, ...}, {"learning_rate": 1e-3, ...}, ...].'
+            )
+            messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+            messages.append({"role": "user", "content": user_msg})
+
+            raw = _call_chat_api_messages(
+                self._api_url, self._model, api_key, messages, self._timeout_s,
+                max_tokens=2048,
+            )
+            return _parse_batch_response(raw, self._space, k)
+        except Exception:
+            logger.warning(
+                "LLM batch policy failed, falling back to %d random", k,
+                exc_info=True,
+            )
+            return [_random_fallback(self._space, self._rng) for _ in range(k)]
 
     def _trimmed_conversation(self) -> list[dict]:
         limit = _MAX_CONVERSATION_PAIRS * 2
