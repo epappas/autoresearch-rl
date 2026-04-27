@@ -16,7 +16,7 @@ from pathlib import Path
 from autoresearch_rl.controller.contract import ContractConfig, validate_diff_against_contract
 from autoresearch_rl.controller.executor import Outcome, TargetExecutor
 from autoresearch_rl.policy.interface import DiffProposal, ParamProposal, Proposal
-from autoresearch_rl.sandbox.validator import validate_diff
+from autoresearch_rl.sandbox.validator import validate_diff, validate_required_calls
 from autoresearch_rl.target.interface import TargetAdapter
 
 logger = logging.getLogger(__name__)
@@ -94,10 +94,12 @@ class DiffExecutor:
         target: TargetAdapter,
         mutable_file: str,
         contract: ContractConfig | None = None,
+        required_calls: list[str] | None = None,
     ) -> None:
         self._target = target
         self._mutable_file = mutable_file
         self._contract = contract
+        self._required_calls = list(required_calls or [])
         self._filename = os.path.basename(mutable_file)
 
     def execute(self, proposal: Proposal, run_dir: str) -> Outcome:
@@ -120,6 +122,11 @@ class DiffExecutor:
         modified = _apply_diff_in_memory(source, diff, self._filename)
         if modified is None:
             return _rejected("diff apply failed", run_dir)
+
+        if self._required_calls:
+            req = validate_required_calls(source, modified, self._required_calls)
+            if not req.ok:
+                return _rejected(req.reason, run_dir)
 
         encoded = base64.b64encode(modified.encode("utf-8")).decode("ascii")
         params: dict[str, object] = {

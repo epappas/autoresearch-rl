@@ -51,6 +51,7 @@ class PolicyConfig(BaseModel):
     frozen_file: str | None = None
     program_file: str | None = None
     contract_strict: bool = True
+    required_calls: list[str] = Field(default_factory=lambda: ["emit_progress"])
     # Hybrid mode fields
     hybrid_param_explore_iters: int = 5
     hybrid_stall_threshold: int = 3
@@ -82,6 +83,13 @@ class ComparabilityConfig(BaseModel):
     strict: bool = True
 
 
+class IntraIterationCancelConfig(BaseModel):
+    enabled: bool = False
+    min_steps: int = 5
+    poll_interval_s: float = 5.0
+    min_reports_before_decide: int = 5
+
+
 class ControllerConfig(BaseModel):
     seed: int | None = None
     max_wall_time_s: int | None = None
@@ -90,6 +98,9 @@ class ControllerConfig(BaseModel):
     failure_rate_limit: float | None = None
     failure_window: int = 10
     checkpoint_path: str | None = None
+    intra_iteration_cancel: IntraIterationCancelConfig = Field(
+        default_factory=IntraIterationCancelConfig
+    )
 
 
 class ScoringConfig(BaseModel):

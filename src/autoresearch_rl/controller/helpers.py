@@ -48,5 +48,7 @@ def check_failure_rate(
     effective_window = max(1, window)
     if len(recent_statuses) < effective_window:
         return False
-    fails = sum(1 for s in recent_statuses if s != "ok")
+    # 'cancelled' is a graceful early-out (cooperative cancel by the
+    # IntraIterationGuard), not a trial failure. Don't penalize it here.
+    fails = sum(1 for s in recent_statuses if s not in ("ok", "cancelled"))
     return (fails / len(recent_statuses)) >= limit

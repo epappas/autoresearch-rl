@@ -175,7 +175,7 @@ def _run_diff_mode(
     mutable_file = policy_cfg.mutable_file
     policy = _build_llm_diff_policy(policy_cfg, objective)
     contract = _build_contract(policy_cfg)
-    executor = DiffExecutor(target, mutable_file, contract)
+    executor = DiffExecutor(target, mutable_file, contract, policy_cfg.required_calls)
     state_builder = _make_diff_state_builder(mutable_file)
     on_keep = _make_on_keep_callback(mutable_file)
 
@@ -214,7 +214,7 @@ def _run_hybrid_mode(
     policy = _policy_from_config(policy_cfg, objective)
     contract = _build_contract(policy_cfg)
     target_exec = TargetExecutor(target)
-    diff_exec = DiffExecutor(target, mutable_file, contract)
+    diff_exec = DiffExecutor(target, mutable_file, contract, policy_cfg.required_calls)
     executor = HybridExecutor(target_exec, diff_exec)
     state_builder = _make_diff_state_builder(mutable_file)
     on_keep = _make_on_keep_callback(mutable_file)
