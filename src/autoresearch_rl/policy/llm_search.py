@@ -116,7 +116,7 @@ def _call_chat_api_messages(
     max_tokens: int = 1024,
     max_retries: int = 5,
 ) -> str:
-    import time as _time
+    from autoresearch_rl.telemetry.timeline import global_span
 
     endpoint = url.rstrip("/") + "/chat/completions"
     payload = {
@@ -127,8 +127,33 @@ def _call_chat_api_messages(
         "max_tokens": max_tokens,
     }
     data = json.dumps(payload).encode("utf-8")
+    span_args = {
+        "model": model,
+        "msg_count": len(messages),
+        "max_tokens": max_tokens,
+    }
+    span_cm = global_span("llm.chat_completion", category="llm", args=span_args)
+    span_cm_args = span_cm.__enter__()
+    try:
+        return _do_request(
+            endpoint, data, api_key, timeout, max_retries, span_cm_args,
+        )
+    finally:
+        span_cm.__exit__(None, None, None)
+
+
+def _do_request(
+    endpoint: str,
+    data: bytes,
+    api_key: str,
+    timeout: int,
+    max_retries: int,
+    span_args: dict,
+) -> str:
+    import time as _time
 
     for attempt in range(max_retries + 1):
+        span_args["attempt"] = attempt
         req = urllib.request.Request(
             endpoint,
             data=data,
@@ -141,6 +166,7 @@ def _call_chat_api_messages(
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
+            span_args["status"] = "ok"
             return body["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             if e.code in (429, 502, 503) and attempt < max_retries:
@@ -153,6 +179,7 @@ def _call_chat_api_messages(
                 )
                 _time.sleep(wait)
                 continue
+            span_args["status"] = f"http_{e.code}"
             raise
         except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
             if attempt < max_retries:
@@ -163,8 +190,10 @@ def _call_chat_api_messages(
                 )
                 _time.sleep(wait)
                 continue
+            span_args["status"] = "network_error"
             raise
 
+    span_args["status"] = "max_retries"
     raise RuntimeError("max retries exhausted")
 
 

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from autoresearch_rl.config import TargetConfig
 from autoresearch_rl.target.interface import RunOutcome
+from autoresearch_rl.telemetry.timeline import global_span
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,13 @@ class BasilicaTarget:
         )
 
         try:
-            response = self._client.create_deployment(
+            with global_span(
+                "basilica.create_deployment",
+                category="basilica",
+                args={"name": name, "image": self._bcfg.image,
+                      "gpu_count": self._bcfg.gpu_count},
+            ):
+                response = self._client.create_deployment(
                 instance_name=name,
                 image=self._bcfg.image,
                 command=["python3", "-uc", bootstrap],
@@ -308,15 +315,22 @@ class BasilicaTarget:
             # Phase 1: wait for deployment to be ready
             ready = False
             waited = 0
-            while waited < min(timeout, 600):
-                status = deployment.status()
-                if status.is_ready:
-                    ready = True
-                    break
-                if status.is_failed:
-                    break
-                time.sleep(poll_interval)
-                waited += poll_interval
+            with global_span(
+                "basilica.wait_ready",
+                category="basilica",
+                args={"name": name, "timeout_s": min(timeout, 600)},
+            ) as wait_args:
+                while waited < min(timeout, 600):
+                    status = deployment.status()
+                    if status.is_ready:
+                        ready = True
+                        break
+                    if status.is_failed:
+                        break
+                    time.sleep(poll_interval)
+                    waited += poll_interval
+                wait_args["ready"] = ready
+                wait_args["waited_s"] = waited
 
             if not ready:
                 # Check logs even if not ready -- training may
@@ -327,9 +341,14 @@ class BasilicaTarget:
 
             # Phase 2: poll for training completion (metrics in logs)
             remaining = timeout - waited
-            return self._poll_for_metrics(
-                deployment, name, t0, run_dir, remaining
-            )
+            with global_span(
+                "basilica.poll_for_metrics",
+                category="basilica",
+                args={"name": name, "remaining_s": remaining},
+            ):
+                return self._poll_for_metrics(
+                    deployment, name, t0, run_dir, remaining
+                )
 
         except Exception as exc:
             elapsed_s = time.monotonic() - t0
@@ -381,10 +400,21 @@ class BasilicaTarget:
                     name, len(metrics), int(elapsed_s),
                 )
                 # Download model before cleanup destroys the container
-                model_local = self._download_model(deployment, run_dir)
+                with global_span(
+                    "basilica.download_model",
+                    category="basilica",
+                    args={"name": name, "run_dir": run_dir},
+                ) as dl_args:
+                    model_local = self._download_model(deployment, run_dir)
+                    dl_args["downloaded"] = bool(model_local)
                 if model_local:
                     metrics["_model_dir"] = model_local  # type: ignore[assignment]
-                self._cleanup(deployment, name)
+                with global_span(
+                    "basilica.cleanup",
+                    category="basilica",
+                    args={"name": name},
+                ):
+                    self._cleanup(deployment, name)
                 return RunOutcome(
                     status="ok", metrics=metrics, stdout=logs,
                     stderr="", elapsed_s=elapsed_s, run_dir=run_dir,

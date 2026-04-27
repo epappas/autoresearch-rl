@@ -27,6 +27,7 @@ from autoresearch_rl.controller.types import LoopResult
 from autoresearch_rl.forecasting import should_early_stop
 from autoresearch_rl.target.progress import CONTROL_ENV, PROGRESS_ENV
 from autoresearch_rl.target.progress_reader import ProgressReader
+from autoresearch_rl.telemetry.timeline import TimelineRecorder, set_global
 from autoresearch_rl.policy.interface import Learnable, Proposal
 from autoresearch_rl.promotion import PromotionTracker
 from autoresearch_rl.telemetry.aggregation import compute_episode_stats
@@ -247,6 +248,10 @@ def run_experiment(
     score_history: list[float] = []
     promotion = PromotionTracker()
 
+    # Phase 3: timeline recorder (no-op when timeline_path is unset).
+    timeline = TimelineRecorder(telemetry.timeline_path)
+    set_global(timeline)
+
     # Comparability
     comp_policy = ComparabilityPolicy(
         budget_mode=comparability_cfg.budget_mode,
@@ -276,7 +281,12 @@ def run_experiment(
                 break
 
             state = proposal_state_builder(history, program)
-            proposal = policy.propose(state)
+            with timeline.span(
+                "policy.propose",
+                category="policy",
+                args={"iter": iter_idx, "policy": type(policy).__name__},
+            ):
+                proposal = policy.propose(state)
             params = proposal_params_extractor(proposal)
 
             run_dir = str(Path(telemetry.artifacts_dir) / f"run-{iter_idx:04d}")
@@ -336,7 +346,14 @@ def run_experiment(
                 guard.start(shutdown=shutdown)
 
             try:
-                outcome = executor.execute(proposal, run_dir)
+                with timeline.span(
+                    "executor.execute",
+                    category="execute",
+                    args={"iter": iter_idx, "executor": type(executor).__name__},
+                ) as exec_args:
+                    outcome = executor.execute(proposal, run_dir)
+                    exec_args["status"] = outcome.status
+                    exec_args["elapsed_s"] = outcome.elapsed_s
             finally:
                 if guard is not None:
                     guard.stop()
@@ -536,6 +553,8 @@ def run_experiment(
                 break
 
     finally:
+        timeline.close()
+        set_global(None)
         if score_history:
             stats = compute_episode_stats(score_history)
             emit(
