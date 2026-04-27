@@ -9,6 +9,7 @@ import typer
 import yaml
 
 from autoresearch_rl.config import RunConfig
+from autoresearch_rl.config_validate import has_blocking_errors, validate_runtime
 from autoresearch_rl.controller.continuous import (
     _diff_extractor,
     _param_extractor,
@@ -45,8 +46,16 @@ def _load_config(config: str, overrides: list[str]) -> RunConfig:
     return RunConfig.model_validate(cfg_data)
 
 
+def _emit_validation_errors(errors: list, *, raise_on_block: bool = True) -> None:
+    for err in errors:
+        typer.echo(err.format(), err=(err.severity == "error"))
+    if raise_on_block and has_blocking_errors(errors):
+        raise typer.Exit(code=2)
+
+
 def _run(config: str, overrides: list[str], seed: int | None) -> None:
     cfg = _load_config(config, overrides)
+    _emit_validation_errors(validate_runtime(cfg))
     if seed is not None:
         cfg.controller.seed = seed
 
@@ -86,6 +95,10 @@ def run(
 @app.command()
 def validate(config: str = typer.Argument(..., help="Path to config.yaml")) -> None:
     cfg = _load_config(config, [])
+    errors = validate_runtime(cfg)
+    _emit_validation_errors(errors, raise_on_block=False)
+    if has_blocking_errors(errors):
+        raise typer.Exit(code=2)
     build_target(cfg.target)
     typer.echo("OK")
 
