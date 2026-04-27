@@ -20,11 +20,10 @@ R3.b (parallel_wallclock comparability): when comparability.budget_mode is
 elapsed_s instead of loop wall time. The description column is annotated
 with concurrency at submission so post-hoc analysis can filter.
 
-Cancellation: NOT yet wired in parallel mode (see _execute_one docstring).
-The serial engine's IntraIterationGuard relies on process-global
-AR_PROGRESS_FILE / AR_CONTROL_FILE env vars, which race across workers.
-Wiring requires per-worker path plumbing (Protocol change or threading.local
-in CommandTarget); tracked as a Phase 4 follow-up.
+Cancellation: each worker spawns its own IntraIterationGuard pointed at
+$run_dir/{progress.jsonl,control.json}. CommandTarget honours these paths
+via its per-call env dict (no os.environ races), so the guard is race-free
+even at high concurrency.
 """
 from __future__ import annotations
 
@@ -54,12 +53,18 @@ from autoresearch_rl.controller.helpers import (
     check_no_improve,
     current_commit,
 )
+from autoresearch_rl.controller.intra_iteration import (
+    BestValueRef,
+    GuardConfig,
+    IntraIterationGuard,
+)
 from autoresearch_rl.controller.resource_pool import ResourcePool
 from autoresearch_rl.controller.shutdown import ShutdownHandler
 from autoresearch_rl.controller.types import LoopResult
 from autoresearch_rl.policy.interface import Learnable, Proposal, propose_batch
 from autoresearch_rl.promotion import PromotionTracker
 from autoresearch_rl.target.interface import resource_cost as compute_resource_cost
+from autoresearch_rl.target.progress_reader import ProgressReader
 from autoresearch_rl.telemetry.aggregation import compute_episode_stats
 from autoresearch_rl.telemetry.comparability import (
     ComparabilityPolicy,
@@ -195,6 +200,7 @@ def run_experiment_parallel(
     pending_rewards: dict[int, float] = {}
     next_unflushed_reward = iter_idx
     next_to_process = iter_idx
+    best_value_ref = BestValueRef(best_value)
     pool_executor = ThreadPoolExecutor(max_workers=pcfg.max_concurrency)
 
     def _stop_requested() -> bool:
@@ -277,7 +283,7 @@ def run_experiment_parallel(
                         timeline=timeline,
                         executor=executor, proposal=prop, run_dir=run_dir,
                         objective=objective, controller=controller,
-                        best_value=best_value,
+                        best_value_ref=best_value_ref,
                         iter_idx=submit_iter,
                         executor_name=type(executor).__name__,
                     )
@@ -347,6 +353,7 @@ def run_experiment_parallel(
                 if score < best_score:
                     best_score = score
                     best_value = value
+                    best_value_ref.set(value)  # publish to live workers
                     decision = "keep"
                     improved = True
                     no_improve_streak = 0
@@ -518,7 +525,7 @@ def _execute_one_timed(
     run_dir: str,
     objective: ObjectiveConfig,
     controller: ControllerConfig,
-    best_value: float | None,
+    best_value_ref: BestValueRef,
     iter_idx: int,
     executor_name: str,
 ) -> Outcome:
@@ -530,7 +537,8 @@ def _execute_one_timed(
     ) as span_args:
         outcome = _execute_one(
             executor=executor, proposal=proposal, run_dir=run_dir,
-            objective=objective, controller=controller, best_value=best_value,
+            objective=objective, controller=controller,
+            best_value_ref=best_value_ref,
         )
         span_args["status"] = outcome.status
         span_args["elapsed_s"] = outcome.elapsed_s
@@ -544,28 +552,60 @@ def _execute_one(
     run_dir: str,
     objective: ObjectiveConfig,
     controller: ControllerConfig,
-    best_value: float | None,
+    best_value_ref: BestValueRef,
 ) -> Outcome:
     """Per-trial worker.
 
-    Known limitation: intra-iteration cancellation (Phase 2 IntraIterationGuard)
-    is NOT wired here. Doing so requires per-worker AR_PROGRESS_FILE /
-    AR_CONTROL_FILE paths, but os.environ is process-global — setting it from
-    a worker thread races every other worker's subprocess fork. Two ways out:
-      1. Plumb progress/control paths through Executor.execute as explicit
-         kwargs (Protocol change, larger refactor).
-      2. Use threading.local in CommandTarget to override env at spawn time.
-    Both are tracked as Phase 4 follow-up. Until then, parallel mode has
-    no cooperative cancel, but each CommandTarget worker still writes its
-    own $run_dir/progress.jsonl (the default when AR_PROGRESS_FILE is
-    unset), so the engine's post-trial drain into traces/events.jsonl and
-    history.progress_series both still work.
+    Per-worker IntraIterationGuard is wired safely because CommandTarget
+    derives its progress/control paths from run_dir via its per-call env
+    dict (no os.environ writes; see CommandTarget._run). The guard reads
+    and writes the same per-iter paths. The guard always starts when
+    cancel is enabled — it consults best_value_ref live, so a worker
+    submitted before any best exists will activate as soon as a sibling
+    trial's keep updates the ref.
     """
     Path(run_dir).mkdir(parents=True, exist_ok=True)
-    if controller.intra_iteration_cancel.enabled:
-        logger.debug(
-            "parallel_engine: intra_iteration_cancel ignored for iter at %s "
-            "(see _execute_one docstring); best_value=%s",
-            run_dir, best_value,
+    progress_path = str(Path(run_dir) / "progress.jsonl")
+    control_path = str(Path(run_dir) / "control.json")
+
+    cancel_cfg = controller.intra_iteration_cancel
+    guard: IntraIterationGuard | None = None
+    guard_reader: ProgressReader | None = None
+    if cancel_cfg.enabled:
+        # Faster reader poll than the engine default (0.5s) so cancel
+        # decisions land quickly; the guard's own poll throttles further.
+        reader_poll = max(0.05, min(0.2, cancel_cfg.poll_interval_s))
+        guard_reader = ProgressReader(progress_path, poll_interval_s=reader_poll)
+        guard_reader.start()
+        guard = IntraIterationGuard(
+            reader=guard_reader,
+            control_path=control_path,
+            metric=objective.metric,
+            direction=objective.direction,
+            best_value_ref=best_value_ref,
+            config=GuardConfig(
+                enabled=True,
+                min_steps=cancel_cfg.min_steps,
+                poll_interval_s=cancel_cfg.poll_interval_s,
+                min_reports_before_decide=cancel_cfg.min_reports_before_decide,
+            ),
         )
-    return executor.execute(proposal, run_dir)
+        guard.start()
+
+    try:
+        outcome = executor.execute(proposal, run_dir)
+    finally:
+        if guard is not None:
+            guard.stop()
+        if guard_reader is not None:
+            guard_reader.stop()
+
+    if guard is not None and guard.cancelled:
+        outcome = Outcome(
+            status="cancelled",
+            metrics=outcome.metrics, stdout=outcome.stdout,
+            stderr=outcome.stderr or guard.cancel_reason,
+            elapsed_s=outcome.elapsed_s, run_dir=outcome.run_dir,
+            judge_signals=outcome.judge_signals,
+        )
+    return outcome

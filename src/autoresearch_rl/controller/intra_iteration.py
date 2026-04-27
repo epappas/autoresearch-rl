@@ -36,6 +36,28 @@ class GuardConfig:
     min_reports_before_decide: int = 5
 
 
+class BestValueRef:
+    """Thread-safe holder for the engine's current best metric value.
+
+    The parallel engine creates one ref and passes it to every worker.
+    Workers' IntraIterationGuards read it on each evaluation cycle, so a
+    trial submitted before any best-value exists can still be cancelled
+    once a sibling trial completes and lowers best_value.
+    """
+
+    def __init__(self, value: float | None = None) -> None:
+        self._value = value
+        self._lock = threading.Lock()
+
+    def get(self) -> float | None:
+        with self._lock:
+            return self._value
+
+    def set(self, value: float) -> None:
+        with self._lock:
+            self._value = value
+
+
 class IntraIterationGuard:
     """Watches a ProgressReader and decides when to cancel.
 
@@ -54,14 +76,19 @@ class IntraIterationGuard:
         control_path: str,
         metric: str,
         direction: str,
-        best_value: float | None,
+        best_value: float | None = None,
+        best_value_ref: BestValueRef | None = None,
         config: GuardConfig,
     ) -> None:
+        if best_value_ref is None and best_value is not None:
+            best_value_ref = BestValueRef(best_value)
+        elif best_value_ref is None:
+            best_value_ref = BestValueRef(None)
         self._reader = reader
         self._control_path = Path(control_path)
         self._metric = metric
         self._direction = direction
-        self._best_value = best_value
+        self._best_value_ref = best_value_ref
         self._cfg = config
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -80,9 +107,6 @@ class IntraIterationGuard:
     def start(self, *, shutdown: ShutdownHandler | None = None) -> None:
         if not self._cfg.enabled:
             return
-        if self._best_value is None:
-            logger.debug("IntraIterationGuard: no best_value yet; running unguarded")
-            return
         if self._thread is not None:
             return
         self._thread = threading.Thread(
@@ -98,23 +122,29 @@ class IntraIterationGuard:
 
     def evaluate(self, series: list[float]) -> tuple[GuardDecision, str]:
         """Decide given the metric series so far."""
-        if self._best_value is None:
+        best_value = self._best_value_ref.get()
+        if best_value is None:
             return ("continue", "no_best_yet")
         if len(series) < max(self._cfg.min_reports_before_decide, 5):
             return ("continue", "insufficient_reports")
         if self._direction == "max":
             # power-law forecaster assumes minimization. Negate.
-            negated_best = -float(self._best_value)
+            negated_best = -float(best_value)
             negated_series = [-v for v in series]
             if should_early_stop(negated_series, negated_best):
                 return ("cancel", "forecast_below_best")
             return ("continue", "forecast_above_best")
         # min direction
-        if should_early_stop(series, float(self._best_value)):
+        if should_early_stop(series, float(best_value)):
             return ("cancel", "forecast_above_best")
         return ("continue", "forecast_below_best")
 
     def _loop(self, shutdown: ShutdownHandler | None) -> None:
+        # Cumulative series across ticks — drain() clears the reader buffer so
+        # we must buffer locally to satisfy min_reports_before_decide when
+        # reports trickle in one-per-tick.
+        accumulated: list[float] = []
+        latest_step = 0
         while not self._stop.is_set():
             time.sleep(self._cfg.poll_interval_s)
             if shutdown is not None and shutdown.requested:
@@ -123,19 +153,18 @@ class IntraIterationGuard:
                 if self._cancelled:
                     return
                 reports = self._reader.drain()
-                if not reports:
+                for r in reports:
+                    if self._metric in r.metrics:
+                        accumulated.append(float(r.metrics[self._metric]))
+                    if r.step > latest_step:
+                        latest_step = r.step
+                if not accumulated:
                     continue
-                latest_step = reports[-1].step
                 if latest_step < self._cfg.min_steps:
                     continue
-                series = [
-                    float(r.metrics[self._metric])
-                    for r in reports
-                    if self._metric in r.metrics
-                ]
-                if len(series) < self._cfg.min_reports_before_decide:
+                if len(accumulated) < self._cfg.min_reports_before_decide:
                     continue
-                decision, reason = self.evaluate(series)
+                decision, reason = self.evaluate(accumulated)
                 if decision == "cancel":
                     self._write_cancel(reason)
                     self._cancelled = True

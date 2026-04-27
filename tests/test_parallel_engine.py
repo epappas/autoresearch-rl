@@ -294,6 +294,101 @@ def test_resource_pool_caps_concurrency(tmp_path: Path) -> None:
 # ---------------------------------------------------------------- stop guards
 
 
+def test_parallel_cancel_fires_with_real_subprocess(tmp_path: Path) -> None:
+    """Real subprocess via CommandTarget; iter 1 emits worsening series and
+    parallel engine cancels mid-trial (R3.a/R3.b path is actually exercised)."""
+    import sys
+    import textwrap
+
+    from autoresearch_rl.config import IntraIterationCancelConfig
+    from autoresearch_rl.target.command import CommandTarget
+    from autoresearch_rl.controller.executor import TargetExecutor
+
+    src_root = Path(__file__).resolve().parents[1] / "src"
+    # Two trial scripts: a fast "good" one and a slow "doomed" one. Each
+    # iteration runs the SAME script but its behavior depends on
+    # AR_PARAM_KIND injected by the engine.
+    script = tmp_path / "trial.py"
+    script.write_text(textwrap.dedent(f"""
+        import os, sys, time
+        sys.path.insert(0, {str(src_root)!r})
+        from autoresearch_rl.target.progress import emit_progress
+        kind = os.environ.get("AR_PARAM_KIND", "good")
+        if kind == "good":
+            emit_progress(step=1, step_target=1, metrics={{"loss": 0.4}})
+            print("loss=0.4")
+            sys.exit(0)
+        # doomed: emit 30 worsening reports, ~3s total
+        for i in range(30):
+            emit_progress(step=i+1, step_target=30, metrics={{"loss": 0.9 + 0.001*i}})
+            time.sleep(0.1)
+        print("loss=1.0")
+        sys.exit(0)
+    """))
+    workdir = tmp_path
+    target = CommandTarget(
+        train_cmd=[sys.executable, str(script)],
+        eval_cmd=None, workdir=str(workdir), timeout_s=30,
+    )
+
+    # Custom policy: iter 0 is "good" (sets best=0.4); subsequent iters are doomed.
+    class _KindPolicy:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def propose(self, state: dict):  # noqa: ARG002
+            kind = "good" if self.calls == 0 else "doomed"
+            self.calls += 1
+            return ParamProposal(params={"kind": kind})
+
+        def propose_batch(self, state: dict, k: int):
+            return [self.propose(state) for _ in range(k)]
+
+    t0 = time.monotonic()
+    result = run_experiment_parallel(
+        executor=TargetExecutor(target),
+        policy=_KindPolicy(),
+        objective=ObjectiveConfig(metric="loss", direction="min"),
+        controller=ControllerConfig(
+            max_iterations=2,
+            intra_iteration_cancel=IntraIterationCancelConfig(
+                enabled=True, min_steps=1, poll_interval_s=0.1,
+                min_reports_before_decide=5,
+            ),
+            parallel=ParallelConfig(
+                enabled=True, max_concurrency=2, resources={"gpu": 2},
+                submit_poll_interval_s=0.1,
+            ),
+        ),
+        telemetry=_telemetry(tmp_path),
+        comparability_cfg=ComparabilityConfig(strict=False),
+        proposal_state_builder=lambda h, p: {"history": h, "program": p},
+        proposal_params_extractor=lambda p: getattr(p, "params", {}),
+        target=target,
+        enable_run_manifest=False, enable_versions=False, enable_tracker=False,
+    )
+    wall = time.monotonic() - t0
+
+    # Both iters submitted; iter 1 must have been cancelled, not run to completion.
+    # Uncancelled doomed trial would emit 30 reports over ~3s. With cancel,
+    # it should bail out well before reaching 30 reports.
+    assert result.iterations == 2
+    assert wall < 4.0, f"doomed trial ran too long ({wall:.2f}s); cancel did not fire"
+
+    # The cancel control file for iter 1 must exist with the cancel payload.
+    import json
+    iter1_control = tmp_path / "artifacts" / "run-0001" / "control.json"
+    assert iter1_control.exists(), "guard never wrote cancel"
+    payload = json.loads(iter1_control.read_text())
+    assert payload["action"] == "cancel"
+    assert "forecast" in payload["reason"]
+
+    # Trial must have exited early — fewer reports than the full 30.
+    iter1_progress = tmp_path / "artifacts" / "run-0001" / "progress.jsonl"
+    n_reports = len(iter1_progress.read_text().strip().splitlines())
+    assert n_reports < 30, f"trial completed all {n_reports} steps; cancel did not interrupt"
+
+
 def test_no_improve_limit_stops_loop(tmp_path: Path) -> None:
     space = {"lr": [1e-5, 1e-3]}
     executor = _SleepyExecutor(iter_s=0.05, metric_fn=lambda _p: 1.0)  # always same
