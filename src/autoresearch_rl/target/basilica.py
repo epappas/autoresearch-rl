@@ -407,6 +407,12 @@ class BasilicaTarget:
             else:
                 poll_interval = min(20, poll_interval + 5)  # idle — back off
 
+            # If the local IntraIterationGuard wrote a cancel control file,
+            # propagate it to the running container so emit_progress() inside
+            # the trial sees the cancel signal on its next call (Phase 2
+            # cooperative cancel for Basilica targets).
+            self._propagate_control(deployment, run_dir)
+
             logs = self._extract_messages(self._safe_logs(deployment))
             metrics = self._parse_metrics(logs)
 
@@ -451,6 +457,51 @@ class BasilicaTarget:
         return self._collect_from_logs(
             deployment, name, t0, run_dir, "timeout"
         )
+
+    def _propagate_control(self, deployment: _Deployment, run_dir: str) -> None:
+        """POST run_dir/control.json contents to deployment.url + /control.
+
+        Best-effort: a missing control file is the common case (no cancel
+        requested). A failed POST is logged at debug — the next poll will
+        retry. The bootstrap server overwrites its container-side control
+        file on each POST, so duplicate uploads are idempotent.
+        """
+        control_local = Path(run_dir) / "control.json"
+        if not control_local.exists():
+            return
+        try:
+            data = control_local.read_bytes()
+        except OSError:
+            return
+        if not data.strip():
+            return
+        # Skip uploads we've already pushed (size-cached so we don't spam
+        # the deployment server every 5s of polling).
+        last = getattr(self, "_last_control_pushed", {}).get(run_dir)
+        if last == len(data):
+            return
+        try:
+            base_url = deployment.url.rstrip("/")
+        except Exception:
+            return
+        try:
+            req = urllib.request.Request(
+                f"{base_url}/control",
+                data=data,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                resp.read()
+        except Exception as exc:
+            logger.debug("control upload failed for %s: %s", run_dir, exc)
+            return
+        cache = getattr(self, "_last_control_pushed", None)
+        if cache is None:
+            cache = {}
+            self._last_control_pushed = cache  # type: ignore[attr-defined]
+        cache[run_dir] = len(data)
+        logger.info("propagated cancel control to %s (%d bytes)", base_url, len(data))
 
     def _fetch_progress(self, deployment: _Deployment, progress_path: Path) -> int:
         """Append /progress snapshot to local progress.jsonl. Returns new file size.

@@ -218,3 +218,84 @@ class TestBuildBootstrapCmd:
         assert "_accept_control" in script
         assert 'AR_CONTROL_FILE' in script
         assert "do_POST" in script
+
+
+class TestPropagateControl:
+    """_propagate_control uploads run_dir/control.json to deployment /control."""
+
+    def _build_target(self) -> BasilicaTarget:
+        # Bypass __init__ (which requires basilica-sdk) by allocating directly.
+        target = BasilicaTarget.__new__(BasilicaTarget)
+        target._client = None  # type: ignore[attr-defined]
+        target._cfg = None  # type: ignore[attr-defined]
+        target._bcfg = None  # type: ignore[attr-defined]
+        target._last_train_outcome = None  # type: ignore[attr-defined]
+        return target
+
+    def test_no_control_file_is_noop(self, tmp_path) -> None:
+        from unittest.mock import MagicMock, patch
+
+        target = self._build_target()
+        deployment = MagicMock()
+        deployment.url = "http://example/"
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            target._propagate_control(deployment, str(tmp_path))
+        mock_urlopen.assert_not_called()
+
+    def test_uploads_when_control_present(self, tmp_path) -> None:
+        from unittest.mock import MagicMock, patch
+
+        import json
+        target = self._build_target()
+        deployment = MagicMock()
+        deployment.url = "http://example/"
+        ctrl = tmp_path / "control.json"
+        ctrl.write_text(json.dumps({"action": "cancel", "reason": "test"}))
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.read = MagicMock(return_value=b"")
+            mock_urlopen.return_value = mock_resp
+            target._propagate_control(deployment, str(tmp_path))
+
+        assert mock_urlopen.call_count == 1
+        req = mock_urlopen.call_args[0][0]
+        assert req.full_url.endswith("/control")
+        assert req.method == "POST"
+        assert b"cancel" in req.data
+
+    def test_skips_duplicate_uploads_same_size(self, tmp_path) -> None:
+        from unittest.mock import MagicMock, patch
+
+        import json
+        target = self._build_target()
+        deployment = MagicMock()
+        deployment.url = "http://example/"
+        ctrl = tmp_path / "control.json"
+        ctrl.write_text(json.dumps({"action": "cancel"}))
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.read = MagicMock(return_value=b"")
+            mock_urlopen.return_value = mock_resp
+            target._propagate_control(deployment, str(tmp_path))
+            target._propagate_control(deployment, str(tmp_path))
+        # Second call must NOT re-upload (size cached).
+        assert mock_urlopen.call_count == 1
+
+    def test_upload_failure_is_swallowed(self, tmp_path) -> None:
+        from unittest.mock import MagicMock, patch
+
+        import json
+        target = self._build_target()
+        deployment = MagicMock()
+        deployment.url = "http://example/"
+        ctrl = tmp_path / "control.json"
+        ctrl.write_text(json.dumps({"action": "cancel"}))
+
+        with patch("urllib.request.urlopen", side_effect=ConnectionError("boom")):
+            target._propagate_control(deployment, str(tmp_path))  # must not raise

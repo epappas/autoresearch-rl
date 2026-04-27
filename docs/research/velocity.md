@@ -20,6 +20,8 @@ Per RLix-Adoption-Remediation.md R4.a: track wall-clock per phase to recalibrate
 | 2026-04-27 | Phase 4A propose_batch | S | ~45m — Protocol method + native impls + LLMParamPolicy.propose_batch + 14 tests | seeded random batch is bit-identical to k serial draws — important for reproducibility |
 | 2026-04-27 | Phase 4B ResourcePool | S | ~30m — bin-packing pool + ParallelConfig + resource_cost helper + 13 tests | concise; took the simple path |
 | 2026-04-27 | Phase 4C parallel_engine | M | ~2.5h — parallel_engine.py + R3.a + R3.b + 7 tests + e2e CLI proof | first attempt serialized via env-lock; tests caught it; restructured into in_flight + completed dicts with min-iter draining |
+| 2026-04-27 | #24 parallel cancel | S | ~1h — CommandTarget per-call env, BestValueRef shared state, cumulative guard buffer + 1 real-subprocess test | three real bugs caught by progressively-harder tests: (1) env races, (2) workers submitted before best_value exists, (3) guard reset its series each tick |
+| 2026-04-27 | #19 Basilica cancel | S | ~30m — _propagate_control POSTs control.json contents to deployment /control, size-cached for idempotence + 4 unit tests | bootstrap server already accepted POST; only the controller-side wiring was missing |
 
 ## Recalibration after first 10 PRs
 
