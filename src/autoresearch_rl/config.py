@@ -77,7 +77,7 @@ class PolicyConfig(BaseModel):
 
 
 class ComparabilityConfig(BaseModel):
-    budget_mode: Literal["fixed_wallclock"] = "fixed_wallclock"
+    budget_mode: Literal["fixed_wallclock", "parallel_wallclock"] = "fixed_wallclock"
     expected_budget_s: int = 300
     expected_hardware_fingerprint: str | None = None
     strict: bool = True
@@ -88,6 +88,13 @@ class IntraIterationCancelConfig(BaseModel):
     min_steps: int = 5
     poll_interval_s: float = 5.0
     min_reports_before_decide: int = 5
+
+
+class ParallelConfig(BaseModel):
+    enabled: bool = False
+    max_concurrency: int = 1
+    resources: dict[str, int] = Field(default_factory=lambda: {"gpu": 1})
+    submit_poll_interval_s: float = 0.5
 
 
 class ControllerConfig(BaseModel):
@@ -101,6 +108,7 @@ class ControllerConfig(BaseModel):
     intra_iteration_cancel: IntraIterationCancelConfig = Field(
         default_factory=IntraIterationCancelConfig
     )
+    parallel: ParallelConfig = Field(default_factory=ParallelConfig)
 
 
 class ScoringConfig(BaseModel):
