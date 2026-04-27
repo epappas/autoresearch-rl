@@ -9,17 +9,29 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from autoresearch_rl.policy._prompt_fragments import (
+    BATCH_DIVERSITY_RULES,
+    CANCELLATION_CONTEXT_RULES,
+    PROGRESS_PROTOCOL_RULES,
+    render_progress_series,
+    render_progress_summary,
+)
 from autoresearch_rl.policy.interface import ParamProposal
 
 logger = logging.getLogger(__name__)
 
 _MAX_HISTORY = 50
 _MAX_CONVERSATION_PAIRS = 10
+
+
 _SYSTEM_PROMPT = (
     "You are a hyperparameter optimization assistant. "
     "Given a search space and experiment history, propose the next set of "
     "hyperparameters to try. Respond with ONLY a JSON object mapping "
-    "parameter names to values from the allowed choices."
+    "parameter names to values from the allowed choices.\n\n"
+    f"{PROGRESS_PROTOCOL_RULES}\n\n"
+    f"{CANCELLATION_CONTEXT_RULES}\n\n"
+    f"{BATCH_DIVERSITY_RULES}"
 )
 
 
@@ -65,6 +77,15 @@ def _format_prompt(
     else:
         lines.append("No experiment history yet. Propose a good starting configuration.")
     lines.append("")
+
+    summary = render_progress_summary(history)
+    if summary:
+        lines.append(summary)
+        lines.append("")
+    series = render_progress_series(history, metric)
+    if series:
+        lines.append(series)
+        lines.append("")
 
     if recent_errors:
         lines.append("Recent errors:")

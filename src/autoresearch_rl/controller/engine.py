@@ -21,9 +21,12 @@ from autoresearch_rl.controller.helpers import (
     check_no_improve,
     current_commit,
 )
+from autoresearch_rl.controller.intra_iteration import GuardConfig, IntraIterationGuard
 from autoresearch_rl.controller.shutdown import ShutdownHandler
 from autoresearch_rl.controller.types import LoopResult
 from autoresearch_rl.forecasting import should_early_stop
+from autoresearch_rl.target.progress import CONTROL_ENV, PROGRESS_ENV
+from autoresearch_rl.target.progress_reader import ProgressReader
 from autoresearch_rl.policy.interface import Learnable, Proposal
 from autoresearch_rl.promotion import PromotionTracker
 from autoresearch_rl.telemetry.aggregation import compute_episode_stats
@@ -57,6 +60,89 @@ def _objective_value(
 
 def _score(value: float, objective: ObjectiveConfig) -> float:
     return value if objective.direction == "min" else -value
+
+
+def _restore_env(key: str, prev: str | None) -> None:
+    if prev is None:
+        os.environ.pop(key, None)
+    else:
+        os.environ[key] = prev
+
+
+def _read_progress_series(
+    run_dir: str, metric: str, max_points: int = 20,
+) -> list[dict] | None:
+    """Read run_dir/progress.jsonl and return [{step, value}] for the metric.
+
+    Downsamples to <= max_points evenly spaced. Returns None when no series.
+    """
+    progress_file = Path(run_dir) / "progress.jsonl"
+    if not progress_file.exists():
+        return None
+    points: list[dict] = []
+    try:
+        for line in progress_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            value = data.get("metrics", {}).get(metric)
+            if value is None:
+                continue
+            points.append({"step": data.get("step"), "value": float(value)})
+    except OSError:
+        return None
+    if not points:
+        return None
+    if len(points) <= max_points:
+        return points
+    stride = len(points) / max_points
+    return [points[int(i * stride)] for i in range(max_points)]
+
+
+def _emit_progress_events(
+    *,
+    trace_path: str,
+    run_dir: str,
+    episode_id: str,
+    iter_idx: int,
+    max_file_size_bytes: int,
+    max_rotated_files: int,
+) -> None:
+    """Drain run_dir/progress.jsonl and forward each report as a trace event."""
+    progress_file = Path(run_dir) / "progress.jsonl"
+    if not progress_file.exists():
+        return
+    try:
+        lines = progress_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        emit(
+            trace_path,
+            {
+                "type": "progress",
+                "episode_id": episode_id,
+                "iter": iter_idx,
+                "step": data.get("step"),
+                "step_target": data.get("step_target"),
+                "elapsed_s": data.get("elapsed_s"),
+                "metrics": data.get("metrics", {}),
+            },
+            run_id=episode_id,
+            max_file_size_bytes=max_file_size_bytes,
+            max_rotated_files=max_rotated_files,
+        )
 
 
 def _save_version(
@@ -216,22 +302,88 @@ def run_experiment(
                 max_rotated_files=telemetry.max_rotated_files,
             )
 
-            outcome = executor.execute(proposal, run_dir)
+            # Phase 2 plumbing: standardize progress + control paths and
+            # spin up an IntraIterationGuard if the trial is allowed to be
+            # cancelled. The guard watches progress reports and writes the
+            # cancel control file when the forecaster says abandon ship.
+            progress_path = str(Path(run_dir) / "progress.jsonl")
+            control_path = str(Path(run_dir) / "control.json")
+            Path(run_dir).mkdir(parents=True, exist_ok=True)
+            prev_progress_env = os.environ.get(PROGRESS_ENV)
+            prev_control_env = os.environ.get(CONTROL_ENV)
+            os.environ[PROGRESS_ENV] = progress_path
+            os.environ[CONTROL_ENV] = control_path
+
+            cancel_cfg = controller.intra_iteration_cancel
+            guard: IntraIterationGuard | None = None
+            guard_reader: ProgressReader | None = None
+            if cancel_cfg.enabled and best_value is not None:
+                guard_reader = ProgressReader(progress_path, poll_interval_s=0.5)
+                guard_reader.start()
+                guard = IntraIterationGuard(
+                    reader=guard_reader,
+                    control_path=control_path,
+                    metric=objective.metric,
+                    direction=objective.direction,
+                    best_value=best_value,
+                    config=GuardConfig(
+                        enabled=True,
+                        min_steps=cancel_cfg.min_steps,
+                        poll_interval_s=cancel_cfg.poll_interval_s,
+                        min_reports_before_decide=cancel_cfg.min_reports_before_decide,
+                    ),
+                )
+                guard.start(shutdown=shutdown)
+
+            try:
+                outcome = executor.execute(proposal, run_dir)
+            finally:
+                if guard is not None:
+                    guard.stop()
+                if guard_reader is not None:
+                    guard_reader.stop()
+                _restore_env(PROGRESS_ENV, prev_progress_env)
+                _restore_env(CONTROL_ENV, prev_control_env)
+
+            # If the guard cancelled mid-trial, override the outcome status.
+            if guard is not None and guard.cancelled:
+                outcome = Outcome(
+                    status="cancelled",
+                    metrics=outcome.metrics,
+                    stdout=outcome.stdout,
+                    stderr=outcome.stderr or guard.cancel_reason,
+                    elapsed_s=outcome.elapsed_s,
+                    run_dir=outcome.run_dir,
+                    judge_signals=outcome.judge_signals,
+                )
 
             # Pick up model dir from target (Basilica downloads it)
             # or from the injected AR_MODEL_DIR
             downloaded_model = outcome.metrics.pop("_model_dir", None)
             effective_model_dir = str(downloaded_model) if downloaded_model else model_dir
 
+            # Drain run_dir/progress.jsonl into telemetry trace.
+            _emit_progress_events(
+                trace_path=telemetry.trace_path,
+                run_dir=run_dir,
+                episode_id=episode_id,
+                iter_idx=iter_idx,
+                max_file_size_bytes=telemetry.max_file_size_bytes,
+                max_rotated_files=telemetry.max_rotated_files,
+            )
+
             value = _objective_value(outcome.metrics, objective)
             status = outcome.status
-            if value is None:
+            if status != "cancelled" and value is None:
                 status = "failed"
 
             # Evaluate score
             decision = "discard"
             improved = False
-            if value is not None:
+            if status == "cancelled":
+                decision = "cancelled"
+                no_improve_streak += 1
+            elif value is not None:
                 score = _score(value, objective)
                 if score < best_score:
                     best_score = score
@@ -256,9 +408,14 @@ def run_experiment(
 
             # Learnable policy feedback
             if isinstance(policy, Learnable):
-                reward = 1.0 if decision == "keep" else (
-                    -0.1 if status == "failed" else 0.0
-                )
+                if decision == "keep":
+                    reward = 1.0
+                elif status == "cancelled":
+                    reward = -0.05  # graceful early-out, not a crash
+                elif status == "failed":
+                    reward = -0.1
+                else:
+                    reward = 0.0
                 policy.record_reward(reward)
 
             # Tracker metrics
@@ -340,6 +497,9 @@ def run_experiment(
                     "params": params,
                     "stdout_tail": outcome.stdout[-500:] if outcome.stdout else "",
                     "stderr_tail": outcome.stderr[-300:] if outcome.stderr else "",
+                    "progress_series": _read_progress_series(
+                        run_dir, objective.metric, max_points=20,
+                    ),
                 }
             )
 

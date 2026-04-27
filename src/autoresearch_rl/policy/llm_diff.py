@@ -12,6 +12,12 @@ import logging
 import os
 import re
 
+from autoresearch_rl.policy._prompt_fragments import (
+    CANCELLATION_CONTEXT_RULES,
+    PROGRESS_PROTOCOL_RULES,
+    render_progress_series,
+    render_progress_summary,
+)
 from autoresearch_rl.policy.interface import DiffProposal
 from autoresearch_rl.policy.llm_context import (
     extract_recent_errors,
@@ -26,12 +32,15 @@ logger = logging.getLogger(__name__)
 _MAX_CONVERSATION_PAIRS = 10
 _MAX_CORRECTION_RETRIES = 2
 
+
 _SYSTEM_PROMPT = (
     "You are a code optimization assistant. "
     "Given a training script, experiment history, and task description, "
     "propose a code modification as a unified diff. "
     "Respond with ONLY a valid unified diff (starting with --- a/ and +++ b/). "
-    "Make targeted, minimal changes to improve the objective metric."
+    "Make targeted, minimal changes to improve the objective metric.\n\n"
+    f"{PROGRESS_PROTOCOL_RULES}\n\n"
+    f"{CANCELLATION_CONTEXT_RULES}"
 )
 
 
@@ -61,6 +70,15 @@ def _format_diff_prompt(
     history_section = format_history_section(history, metric)
     lines.append(history_section)
     lines.append("")
+
+    summary = render_progress_summary(history)
+    if summary:
+        lines.append(summary)
+        lines.append("")
+    series = render_progress_series(history, metric)
+    if series:
+        lines.append(series)
+        lines.append("")
 
     recent_errors = extract_recent_errors(history)
     if recent_errors:

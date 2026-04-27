@@ -10,6 +10,8 @@ from pathlib import Path
 
 from autoresearch_rl.eval.metrics import parse_metrics
 from autoresearch_rl.target.interface import RunOutcome, TargetAdapter
+from autoresearch_rl.target.progress import PROGRESS_ENV
+from autoresearch_rl.target.progress_reader import ProgressReader
 
 logger = logging.getLogger(__name__)
 
@@ -54,16 +56,27 @@ class CommandTarget(TargetAdapter):
         if "AR_MODEL_DIR" in params:
             env["AR_MODEL_DIR"] = str(params["AR_MODEL_DIR"])
 
+        # Honor engine-provided AR_PROGRESS_FILE if set (Phase 2 guard
+        # uses it to drive cancellation); otherwise default per-iteration path.
+        progress_path = env.get(PROGRESS_ENV) or str(Path(run_dir) / "progress.jsonl")
+        env[PROGRESS_ENV] = progress_path
+        Path(run_dir).mkdir(parents=True, exist_ok=True)
+        reader = ProgressReader(progress_path, poll_interval_s=0.5)
+        reader.start()
+
         start = time.monotonic()
-        cp = subprocess.run(
-            cmd,
-            cwd=self.workdir,
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=self.timeout_s,
-            check=False,
-        )
+        try:
+            cp = subprocess.run(
+                cmd,
+                cwd=self.workdir,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=self.timeout_s,
+                check=False,
+            )
+        finally:
+            reader.stop()
         elapsed = time.monotonic() - start
         stdout = cp.stdout or ""
         stderr = cp.stderr or ""
@@ -79,6 +92,13 @@ class CommandTarget(TargetAdapter):
                         metrics_dict[k] = float(v)
                     except ValueError:
                         continue
+
+        # Backfill metrics from latest progress report if stdout/stderr were silent.
+        latest = reader.latest()
+        if latest is not None and latest.metrics:
+            for k, v in latest.metrics.items():
+                metrics_dict.setdefault(k, float(v))
+
         status = "ok" if cp.returncode == 0 else "failed"
         return RunOutcome(
             status=status, metrics=metrics_dict, stdout=stdout,

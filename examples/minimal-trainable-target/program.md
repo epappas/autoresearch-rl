@@ -27,3 +27,9 @@ optimum. Modifying them changes the difficulty of the search.
 - Do not change the `print(f"loss=...")` and `print(f"val_bpb=...")` output lines.
 - Each iteration is near-instant — the wall-time budget allows many iterations.
 - Propose one change at a time: parameter default, penalty coefficient, or logic fix.
+
+## Progress protocol
+The training script must call `emit_progress(step=, step_target=, metrics=...)` at least once
+per epoch (here: once total). The controller drains these reports for intra-iteration signal
+and may cooperatively cancel doomed trials. **Removing existing `emit_progress(...)` calls
+will be rejected by the diff validator.**

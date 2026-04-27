@@ -4,6 +4,12 @@ import argparse
 import json
 import os
 
+try:
+    from autoresearch_rl.target.progress import emit_progress
+except ImportError:  # pragma: no cover - example may run without the SDK on path
+    def emit_progress(**_: object) -> bool:
+        return True
+
 
 def _env_params() -> dict[str, object]:
     if "AR_PARAMS_JSON" in os.environ:
@@ -55,6 +61,10 @@ def main() -> None:
         use_qk_norm=use_qk_norm,
         grad_clip=grad_clip,
     )
+
+    # Progress protocol — controller drains this for intra-iteration signal
+    # and may issue cooperative cancel via $AR_CONTROL_FILE.
+    emit_progress(step=1, step_target=1, metrics={"loss": loss, "val_bpb": val_bpb})
 
     print(f"loss={loss:.4f}")
     print(f"val_bpb={val_bpb:.4f}")
