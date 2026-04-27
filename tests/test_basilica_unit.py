@@ -188,3 +188,33 @@ class TestBuildBootstrapCmd:
         cmd = ["python3", "train.py", "--epochs", "3", "--lr", "1e-5"]
         script = BasilicaTarget._build_bootstrap_cmd(cmd)
         assert repr(cmd) in script
+
+    def test_dict_literals_stay_literal(self) -> None:
+        # After string.Template refactor, JSON dict literals in the script
+        # must round-trip without {{}} escaping.
+        script = BasilicaTarget._build_bootstrap_cmd(["python3", "train.py"])
+        assert '{"files": [], "model_dir": _model_dir}' in script
+        assert '{"path": str(f.relative_to(base)), "size": f.stat().st_size}' in script
+
+    def test_fstring_braces_stay_literal(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(["python3", "train.py"])
+        assert "f\"[ar] wrote modified source to {_tgt} ({len(_src)} b64 chars)\"" in script
+
+    def test_no_double_braces_remain(self) -> None:
+        # If the old .format() escaping leaked, we'd see {{ or }} in the output.
+        script = BasilicaTarget._build_bootstrap_cmd(["python3", "train.py"])
+        assert "{{" not in script
+        assert "}}" not in script
+
+    def test_bootstrap_exposes_progress_endpoint(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(["python3", "train.py"])
+        assert "/progress" in script
+        assert "_serve_progress" in script
+        assert 'AR_PROGRESS_FILE' in script
+
+    def test_bootstrap_exposes_control_endpoint(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(["python3", "train.py"])
+        assert "/control" in script
+        assert "_accept_control" in script
+        assert 'AR_CONTROL_FILE' in script
+        assert "do_POST" in script

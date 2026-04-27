@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import string
 import time
 import urllib.request
 import uuid
@@ -28,12 +29,17 @@ HEALTH_PORT = 8080
 
 # Bootstrap script injected into every Basilica deployment.
 # Starts a health-check server, then runs the user command via subprocess.
-_BOOTSTRAP = r"""
-import subprocess, sys, threading, time, json
+# Uses string.Template ($port, $cmd) so dict / f-string braces stay literal.
+_BOOTSTRAP_TEMPLATE = string.Template(r"""
+import subprocess, sys, threading, time, json, os as _os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path as _Path
 
-_model_dir = __import__("os").environ.get("AR_MODEL_DIR", "")
+_model_dir = _os.environ.get("AR_MODEL_DIR", "")
+_progress_path = _os.environ.get("AR_PROGRESS_FILE", "/tmp/ar_progress.jsonl")
+_control_path = _os.environ.get("AR_CONTROL_FILE", "/tmp/ar_control.json")
+_os.environ.setdefault("AR_PROGRESS_FILE", _progress_path)
+_os.environ.setdefault("AR_CONTROL_FILE", _control_path)
 
 class _H(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -41,6 +47,8 @@ class _H(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"ok")
+        elif self.path == "/progress":
+            self._serve_progress()
         elif self.path == "/model/files":
             self._serve_model_listing()
         elif self.path.startswith("/model/download/"):
@@ -49,20 +57,51 @@ class _H(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    def do_POST(self):
+        if self.path == "/control":
+            self._accept_control()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def _serve_progress(self):
+        try:
+            with open(_progress_path, "rb") as fp:
+                data = fp.read()
+        except OSError:
+            data = b""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _accept_control(self):
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        body = self.rfile.read(length) if length else b""
+        try:
+            with open(_control_path, "wb") as fp:
+                fp.write(body)
+        except OSError:
+            self.send_response(500)
+            self.end_headers()
+            return
+        self.send_response(204)
+        self.end_headers()
+
     def _serve_model_listing(self):
         if not _model_dir or not _Path(_model_dir).exists():
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(json.dumps({{"files": [], "model_dir": _model_dir}}).encode())
+            self.wfile.write(json.dumps({"files": [], "model_dir": _model_dir}).encode())
             return
         files = []
         base = _Path(_model_dir)
         for f in sorted(base.rglob("*")):
             if f.is_file():
-                files.append({{"path": str(f.relative_to(base)), "size": f.stat().st_size}})
+                files.append({"path": str(f.relative_to(base)), "size": f.stat().st_size})
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(json.dumps({{"files": files, "model_dir": _model_dir}}).encode())
+        self.wfile.write(json.dumps({"files": files, "model_dir": _model_dir}).encode())
 
     def _serve_model_file(self, rel_path):
         if not _model_dir:
@@ -85,7 +124,7 @@ class _H(BaseHTTPRequestHandler):
         pass
 
 threading.Thread(
-    target=lambda: HTTPServer(("", {port}), _H).serve_forever(),
+    target=lambda: HTTPServer(("", $port), _H).serve_forever(),
     daemon=True,
 ).start()
 
@@ -96,14 +135,14 @@ if _src:
     _tgt = _os.environ.get("AR_MODIFIED_TARGET", "train.py")
     with open(_tgt, "w") as _f:
         _f.write(_b64.b64decode(_src).decode("utf-8"))
-    print(f"[ar] wrote modified source to {{_tgt}} ({{len(_src)}} b64 chars)")
+    print(f"[ar] wrote modified source to {_tgt} ({len(_src)} b64 chars)")
 
-rc = subprocess.call({cmd}, env=dict(**__import__("os").environ))
+rc = subprocess.call($cmd, env=dict(**__import__("os").environ))
 sys.stdout.flush()
 sys.stderr.flush()
 time.sleep(15)
 sys.exit(rc)
-"""
+""")
 
 
 class BasilicaTarget:
@@ -154,7 +193,7 @@ class BasilicaTarget:
                 f"_sp.check_call({repr(setup)}, shell=True)\n"
             )
         cmd_repr = repr(user_cmd)
-        script = _BOOTSTRAP.format(port=HEALTH_PORT, cmd=cmd_repr)
+        script = _BOOTSTRAP_TEMPLATE.substitute(port=HEALTH_PORT, cmd=cmd_repr)
         # Insert setup block after the health server start
         marker = "threading.Thread("
         idx = script.index(marker)
@@ -308,13 +347,29 @@ class BasilicaTarget:
         run_dir: str,
         remaining: float,
     ) -> RunOutcome:
-        """Poll logs until training metrics appear or timeout."""
+        """Poll logs until training metrics appear or timeout.
+
+        Adaptive interval: drops to 5s when /progress shows live activity,
+        backs off to 20s when stalled. Persists progress reports to
+        run_dir/progress.jsonl for the controller / IntraIterationGuard.
+        """
+        progress_path = Path(run_dir) / "progress.jsonl"
+        progress_path.parent.mkdir(parents=True, exist_ok=True)
+        last_progress_size = 0
         poll_interval = 20
-        waited = 0
+        waited = 0.0
 
         while waited < remaining:
             time.sleep(poll_interval)
             waited += poll_interval
+
+            # Pull /progress snapshot from container if available.
+            new_size = self._fetch_progress(deployment, progress_path)
+            if new_size > last_progress_size:
+                last_progress_size = new_size
+                poll_interval = 5  # active — poll faster
+            else:
+                poll_interval = min(20, poll_interval + 5)  # idle — back off
 
             logs = self._extract_messages(self._safe_logs(deployment))
             metrics = self._parse_metrics(logs)
@@ -349,6 +404,31 @@ class BasilicaTarget:
         return self._collect_from_logs(
             deployment, name, t0, run_dir, "timeout"
         )
+
+    def _fetch_progress(self, deployment: object, progress_path: Path) -> int:
+        """Append /progress snapshot to local progress.jsonl. Returns new file size.
+
+        Best-effort. Network errors are silent; the existing log-poll path is
+        the source of truth for final metrics, /progress only enriches signal.
+        """
+        try:
+            base_url = deployment.url.rstrip("/")
+        except Exception:
+            return progress_path.stat().st_size if progress_path.exists() else 0
+        try:
+            req = urllib.request.Request(f"{base_url}/progress", method="GET")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read()
+        except Exception:
+            return progress_path.stat().st_size if progress_path.exists() else 0
+        # /progress returns the entire JSONL each time; rewrite atomically.
+        tmp = progress_path.with_suffix(".jsonl.tmp")
+        try:
+            tmp.write_bytes(data)
+            tmp.replace(progress_path)
+        except OSError:
+            return progress_path.stat().st_size if progress_path.exists() else 0
+        return len(data)
 
     def _collect_from_logs(
         self,
