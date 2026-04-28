@@ -18,6 +18,15 @@ uv sync --extra dev
 uv run autoresearch-rl run examples/minimal-trainable-target/config.yaml
 ```
 
+Common workflows are wrapped in a `Makefile`:
+
+```bash
+make help       # list targets
+make check      # lint + typecheck + full tests (~95 s)
+make test-fast  # tests excluding the slow integration suite (~30 s)
+make showcase   # run examples/parallel-cancel-showcase end-to-end
+```
+
 ## The Two Scripts
 
 Every experiment has two scripts connected by the filesystem, never by imports:
