@@ -36,11 +36,15 @@ def hardware_fingerprint() -> str:
 
 
 def check_comparability(policy: ComparabilityPolicy, run_budget_s: int, run_hardware_fingerprint: str) -> tuple[bool, str]:
-    if policy.budget_mode != "fixed_wallclock":
+    if policy.budget_mode not in ("fixed_wallclock", "parallel_wallclock"):
         return False, "unsupported_budget_mode"
 
-    if run_budget_s != policy.expected_budget_s:
-        return False, f"budget_mismatch:{run_budget_s}!={policy.expected_budget_s}"
+    # parallel_wallclock writes per-trial budget into the ledger; the
+    # loop-level budget is meaningless under parallelism, so skip the
+    # equality check.
+    if policy.budget_mode == "fixed_wallclock":
+        if run_budget_s != policy.expected_budget_s:
+            return False, f"budget_mismatch:{run_budget_s}!={policy.expected_budget_s}"
 
     if policy.expected_hardware_fingerprint and run_hardware_fingerprint != policy.expected_hardware_fingerprint:
         return False, "hardware_fingerprint_mismatch"

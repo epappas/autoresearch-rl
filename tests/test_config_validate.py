@@ -164,6 +164,65 @@ def test_clean_config_has_no_errors() -> None:
     assert errs == []
 
 
+def test_cancel_resolves_train_cmd_when_no_mutable_file(tmp_path: Path) -> None:
+    """For non-diff policies, cancel should accept a target.train_cmd script."""
+    from autoresearch_rl.config import IntraIterationCancelConfig
+
+    train_py = tmp_path / "train.py"
+    train_py.write_text("from autoresearch_rl.target.progress import emit_progress\nemit_progress(step=1, step_target=1, metrics={})\n")
+    cfg = _base_cfg(
+        target=TargetConfig(
+            type="command", workdir=str(tmp_path),
+            train_cmd=["python3", "train.py"],
+        ),
+        policy=PolicyConfig(type="random", params={"lr": [1e-3]}),
+        controller=ControllerConfig(
+            intra_iteration_cancel=IntraIterationCancelConfig(enabled=True),
+        ),
+    )
+    errs = validate_runtime(cfg)
+    assert not _by_code(errs, "missing_emit_progress")
+    assert not _by_code(errs, "cancel_without_mutable")
+
+
+def test_cancel_blocks_train_cmd_without_emit_progress(tmp_path: Path) -> None:
+    from autoresearch_rl.config import IntraIterationCancelConfig
+
+    train_py = tmp_path / "train.py"
+    train_py.write_text("print('val_loss=0.5')\n")  # no emit_progress
+    cfg = _base_cfg(
+        target=TargetConfig(
+            type="command", workdir=str(tmp_path),
+            train_cmd=["python3", "train.py"],
+        ),
+        policy=PolicyConfig(type="random", params={"lr": [1e-3]}),
+        controller=ControllerConfig(
+            intra_iteration_cancel=IntraIterationCancelConfig(enabled=True),
+        ),
+    )
+    errs = validate_runtime(cfg)
+    misses = _by_code(errs, "missing_emit_progress")
+    assert misses, errs
+    assert any("emit_progress" in e.message for e in misses)
+
+
+def test_cancel_warns_when_source_unknown() -> None:
+    """No mutable_file, train_cmd has no .py — emit warn, not error."""
+    from autoresearch_rl.config import IntraIterationCancelConfig
+
+    cfg = _base_cfg(
+        target=TargetConfig(type="http", url="http://example", train_cmd=None),
+        policy=PolicyConfig(type="random", params={"lr": [1e-3]}),
+        controller=ControllerConfig(
+            intra_iteration_cancel=IntraIterationCancelConfig(enabled=True),
+        ),
+    )
+    errs = validate_runtime(cfg)
+    warns = _by_code(errs, "cancel_source_unknown")
+    assert warns
+    assert all(e.severity == "warn" for e in warns)
+
+
 def test_validation_error_format_includes_severity_and_code() -> None:
     err = ValidationError(severity="error", code="missing_file",
                           message="not found", field="policy.mutable_file")

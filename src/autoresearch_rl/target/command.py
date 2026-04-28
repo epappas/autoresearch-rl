@@ -60,9 +60,13 @@ class CommandTarget(TargetAdapter):
         # $run_dir/progress.jsonl and $run_dir/control.json. Worker threads
         # never share env state through os.environ, so the parallel engine
         # is race-free (each subprocess inherits its own per-call env dict).
+        # Paths are absolutized so the subprocess cwd (target.workdir) does
+        # not change the resolution.
         Path(run_dir).mkdir(parents=True, exist_ok=True)
         progress_path = env.get(PROGRESS_ENV) or str(Path(run_dir) / "progress.jsonl")
         control_path = env.get(CONTROL_ENV) or str(Path(run_dir) / "control.json")
+        progress_path = str(Path(progress_path).resolve())
+        control_path = str(Path(control_path).resolve())
         env[PROGRESS_ENV] = progress_path
         env[CONTROL_ENV] = control_path
         reader = ProgressReader(progress_path, poll_interval_s=0.5)

@@ -48,6 +48,34 @@ def test_command_target_collects_progress(tmp_path: Path) -> None:
     assert losses[2] == 1 / 3
 
 
+def test_progress_path_is_absolutized_against_subprocess_cwd(tmp_path: Path) -> None:
+    """When workdir != run_dir's parent, the trial subprocess (cwd=workdir)
+    must still find AR_PROGRESS_FILE at the engine-intended absolute path."""
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    run_dir = tmp_path / "artifacts" / "run-0000"
+    # run_dir is RELATIVE to project cwd, not to workdir — same shape
+    # as the showcase example.
+
+    script = _trial_script(tmp_path, body=textwrap.indent(textwrap.dedent("""
+        emit_progress(step=1, step_target=1, metrics={"loss": 0.5})
+    """), "        ").lstrip())
+
+    target = CommandTarget(
+        train_cmd=[sys.executable, str(script)],
+        eval_cmd=None,
+        workdir=str(workdir),  # subprocess cwd != run_dir's parent
+        timeout_s=30,
+    )
+    outcome = target.run(run_dir=str(run_dir), params={})
+    assert outcome.status == "ok", outcome.stderr
+    progress_file = run_dir / "progress.jsonl"
+    assert progress_file.exists(), (
+        "progress.jsonl not at expected path; subprocess wrote to wrong cwd-relative path"
+    )
+    assert progress_file.read_text().strip(), "progress file empty — trial wrote elsewhere"
+
+
 def test_progress_metrics_backfill_when_stdout_silent(tmp_path: Path) -> None:
     """If trial only emits via emit_progress (no stdout metrics), the latest report
     should backfill outcome.metrics so the engine has a value to score on."""

@@ -196,12 +196,16 @@ def _check_budget_alignment(cfg: RunConfig) -> list[ValidationError]:
 def _check_required_calls_for_cancel(cfg: RunConfig) -> list[ValidationError]:
     """R3.e: positive-presence guardrail.
 
-    If intra-iteration cancel is configured, the mutable file MUST contain at
+    If intra-iteration cancel is enabled, the trial source MUST contain at
     least one emit_progress(...) call — otherwise no progress signal can fire
     cancellation and the feature is dead.
 
-    Currently `controller.intra_iteration_cancel` doesn't exist yet (Phase 2),
-    so this is a placeholder that activates once the field is added.
+    Trial source is identified by, in priority order:
+      1. policy.mutable_file (always set in diff/hybrid modes)
+      2. the first .py argument inside target.train_cmd, joined with workdir
+
+    If neither resolves to an existing file, we emit a warn (not an error)
+    — the trial may legitimately be a non-Python command we can't introspect.
     """
     cancel_enabled = getattr(
         getattr(cfg.controller, "intra_iteration_cancel", None),
@@ -210,28 +214,56 @@ def _check_required_calls_for_cancel(cfg: RunConfig) -> list[ValidationError]:
     )
     if not cancel_enabled:
         return []
-    if not cfg.policy.mutable_file:
+
+    src_path = _find_trial_source(cfg)
+    if src_path is None:
+        return [ValidationError(
+            severity="warn",
+            code="cancel_source_unknown",
+            field="controller.intra_iteration_cancel",
+            message=(
+                "intra_iteration_cancel.enabled but the trial source cannot be "
+                "located via policy.mutable_file or target.train_cmd; "
+                "cannot verify emit_progress(...) is called"
+            ),
+        )]
+    try:
+        src = src_path.read_text(encoding="utf-8")
+    except OSError as exc:
         return [ValidationError(
             severity="error",
-            code="cancel_without_mutable",
-            field="controller.intra_iteration_cancel",
-            message="intra_iteration_cancel.enabled requires policy.mutable_file",
+            code="trial_source_unreadable",
+            field="trial_source",
+            message=f"cannot read trial source {src_path}: {exc}",
         )]
-    src_path = Path(cfg.policy.mutable_file)
-    if not src_path.is_file():
-        return []  # already reported by _check_policy_files
-    src = src_path.read_text(encoding="utf-8")
     if not _has_emit_progress_call(src):
         return [ValidationError(
             severity="error",
             code="missing_emit_progress",
-            field="policy.mutable_file",
+            field=str(src_path),
             message=(
                 f"intra_iteration_cancel.enabled but {src_path} contains no "
                 f"emit_progress(...) calls; cancellation can never fire"
             ),
         )]
     return []
+
+
+def _find_trial_source(cfg: RunConfig) -> Path | None:
+    """Return the most likely trial source file. None if cannot determine."""
+    if cfg.policy.mutable_file:
+        p = Path(cfg.policy.mutable_file)
+        if p.is_file():
+            return p
+    cmd = cfg.target.train_cmd or []
+    workdir = Path(cfg.target.workdir or ".")
+    for arg in cmd:
+        if isinstance(arg, str) and arg.endswith(".py"):
+            candidates = [Path(arg), workdir / arg]
+            for cand in candidates:
+                if cand.is_file():
+                    return cand
+    return None
 
 
 def _has_emit_progress_call(src: str) -> bool:
