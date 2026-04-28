@@ -3,7 +3,7 @@
 A 13-second self-contained demo that you can run on your laptop. No GPU.
 No API keys. No accounts.
 
-![Showcase progress chart: 16 experiments, 3 improvements (iter 0 → 5 → 12), best val_loss = 0.20](progress.png)
+![Showcase progress chart: 16 experiments, 3 kept, 10 cancelled, 0 failed. Improvements at iter 0 → 5 → 12, best val_loss = 0.20. Amber rings show trials the guard cancelled mid-flight; gray dots show full-run discards.](progress.png)
 
 ## Why CPU?
 
@@ -93,14 +93,18 @@ plus cancellation cuts the wall by more than half.
 
 `progress.png` plots one point per iteration:
 
-- **Gray dots** — trials that ran and were not improvements (and
-  cancelled trials, which the chart script lumps with "discarded").
+- **Gray dots** — trials that ran to completion and were not improvements.
+- **Amber rings** — trials cancelled mid-flight by the guard. They cluster
+  in the high-loss region because that's exactly where the cancel rule fires
+  ("trajectory not going to beat the current best").
 - **Green dots** — trials that beat the running best.
 - **Red step function** — the running best score over time.
 
 The synthetic landscape has its optimum at `lr=3e-3, batch=32`. You can
 see the campaign find it by iter 12 (the third green dot at the bottom
-right).
+right). Reading the chart left-to-right tells you the cooperative-cancel
+story: 10 of 16 trials were cancelled, saving roughly 10 × ~1.3 s of
+wasted compute.
 
 ## Anatomy of the trial
 

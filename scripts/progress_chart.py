@@ -2,7 +2,8 @@
 """Generate a progress chart from a results.tsv ledger.
 
 Produces a scatter plot showing experiment-over-experiment improvement:
-  - Gray dots: discarded experiments
+  - Gray dots: discarded experiments (ran to completion, didn't beat best)
+  - Amber rings: cancelled experiments (cooperatively cancelled mid-trial)
   - Green dots: kept experiments (improvements)
   - Red x: failed experiments
   - Step function: running best score
@@ -39,6 +40,7 @@ BLK500 = "#828282"
 WHT0 = "#F4F4F4"
 WHT100ALT = "#DDDDDD"
 GREEN = "#2ECC71"
+AMBER = "#F5A623"  # cooperatively-cancelled trials
 
 
 @dataclass
@@ -95,6 +97,7 @@ def plot_progress(
 
     # Separate by status
     xs_discard, ys_discard = [], []
+    xs_cancel, ys_cancel = [], []
     xs_keep, ys_keep = [], []
     xs_fail, ys_fail = [], []
 
@@ -102,6 +105,11 @@ def plot_progress(
         if r.status == "keep":
             xs_keep.append(i)
             ys_keep.append(r.metric_value)
+        elif r.status == "cancelled":
+            # cancelled trials still recorded their last metric value;
+            # plot it but mark visually distinct from full-run discards.
+            xs_cancel.append(i)
+            ys_cancel.append(r.metric_value)
         elif r.metric_value == 0.0 or r.status in ("failed", "crash"):
             xs_fail.append(i)
             ys_fail.append(0.0)
@@ -142,6 +150,15 @@ def plot_progress(
         ax.scatter(
             xs_discard, ys_discard,
             c=BLK500, s=70, alpha=0.4, zorder=2, label="Discarded",
+        )
+
+    # Cancelled: amber hollow ring (signals 'cooperatively cancelled
+    # mid-trial' — distinct from a discarded full-run trial).
+    if xs_cancel:
+        ax.scatter(
+            xs_cancel, ys_cancel,
+            facecolors="none", edgecolors=AMBER, s=90, linewidths=2,
+            alpha=0.85, zorder=2, label="Cancelled (early-out)",
         )
 
     # Failed: red x
@@ -185,12 +202,14 @@ def plot_progress(
     n_total = len(rows)
     n_kept = len(xs_keep)
     n_failed = len(xs_fail)
+    n_cancel = len(xs_cancel)
     metric_name = rows[0].metric_name if rows else "metric"
     dir_label = "higher is better" if direction == "max" else "lower is better"
 
+    cancel_part = f", {n_cancel} cancelled" if n_cancel else ""
     chart_title = title or (
         f"autoresearch-rl: {n_total} experiments, "
-        f"{n_kept} kept, {n_failed} failed"
+        f"{n_kept} kept{cancel_part}, {n_failed} failed"
     )
     ax.set_title(chart_title, fontsize=22, fontweight="bold", color=WHT0, pad=20)
     ax.set_xlabel("Experiment #", fontsize=18, color=BLK500)
@@ -205,7 +224,7 @@ def plot_progress(
         text.set_color(WHT100ALT)
 
     # Y-axis range with margin
-    all_values = [v for v in ys_keep + ys_discard if v > 0]
+    all_values = [v for v in ys_keep + ys_discard + ys_cancel if v > 0]
     if all_values:
         ymin, ymax = min(all_values), max(all_values)
         margin = (ymax - ymin) * 0.15 if ymax > ymin else 0.05
