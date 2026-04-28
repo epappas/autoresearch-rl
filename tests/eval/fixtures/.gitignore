@@ -1,0 +1,5 @@
+# Captured raw responses from real-LLM runs (tests/eval/real_llm.py).
+# These are useful diff fodder for prompt edits but not durable test
+# inputs — gitignored so we never accidentally commit a token of LLM
+# output that would drift the next time the model updates.
+real_responses/

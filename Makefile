@@ -52,3 +52,7 @@ showcase-chart: ## Regenerate examples/parallel-cancel-showcase/progress.png fro
 validate: ## Validate a config: make validate CONFIG=path/to/config.yaml
 	@if [ -z "$(CONFIG)" ]; then echo "usage: make validate CONFIG=path/to/config.yaml"; exit 2; fi
 	uv run autoresearch-rl validate $(CONFIG)
+
+real-llm: ## Run real-LLM prompt validation against Kimi K2.6 (needs MOONSHOT_API_KEY)
+	@if [ -z "$(MOONSHOT_API_KEY)" ]; then echo "usage: MOONSHOT_API_KEY=sk-... make real-llm"; exit 2; fi
+	uv run pytest tests/eval/real_llm.py -v
