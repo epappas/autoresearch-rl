@@ -23,6 +23,7 @@ Per RLix-Adoption-Remediation.md R4.a: track wall-clock per phase to recalibrate
 | 2026-04-27 | #24 parallel cancel | S | ~1h — CommandTarget per-call env, BestValueRef shared state, cumulative guard buffer + 1 real-subprocess test | three real bugs caught by progressively-harder tests: (1) env races, (2) workers submitted before best_value exists, (3) guard reset its series each tick |
 | 2026-04-27 | #19 Basilica cancel | S | ~30m — _propagate_control POSTs control.json contents to deployment /control, size-cached for idempotence + 4 unit tests | bootstrap server already accepted POST; only the controller-side wiring was missing |
 | 2026-04-28 | Phase 5 deferral doc | S | ~30m — RLix-Phase5-Deferred.md with rationale, triggers, ~300-line implementation sketch + plan cross-references | no code; future-implementer brief so deferral does not become amnesia |
+| 2026-04-28 | Showcase example | S | ~1.5h — examples/parallel-cancel-showcase exercising Phase 1+2+3+4+6+7.5; surfaced 3 real bugs while building it | (a) parallel_wallclock unsupported by check_comparability, (b) progress paths not absolutized → broken under target.workdir != cwd, (c) R3.e check too strict for non-diff policies — all fixed with tests |
 
 ## Recalibration after first 10 PRs
 

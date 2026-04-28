@@ -1,0 +1,37 @@
+name: parallel-cancel-showcase-serial-baseline
+
+program_path: examples/parallel-cancel-showcase/program.md
+
+objective:
+  metric: val_loss
+  direction: min
+
+target:
+  type: command
+  workdir: examples/parallel-cancel-showcase
+  timeout_s: 30
+  prepare_cmd: ["python3", "prepare.py"]
+  train_cmd: ["python3", "train.py"]
+
+policy:
+  type: random
+  seed: 42
+  params:
+    learning_rate: [1.0e-5, 1.0e-4, 3.0e-4, 1.0e-3, 3.0e-3, 1.0e-2]
+    batch_size: [8, 16, 32, 64]
+
+controller:
+  max_iterations: 16
+  # parallel: not set -> serial
+  # intra_iteration_cancel: not set -> off
+
+comparability:
+  budget_mode: fixed_wallclock
+  expected_budget_s: 60
+  strict: false
+
+telemetry:
+  trace_path: examples/parallel-cancel-showcase/artifacts-serial/traces/events.jsonl
+  ledger_path: examples/parallel-cancel-showcase/artifacts-serial/results.tsv
+  artifacts_dir: examples/parallel-cancel-showcase/artifacts-serial/runs
+  versions_dir: examples/parallel-cancel-showcase/artifacts-serial/versions
