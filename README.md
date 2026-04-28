@@ -60,15 +60,47 @@ the full experiment history, then proposes a unified diff. If the diff fails val
 the error is sent back for correction (up to 2 retries). If diff proposals fail
 consecutively, it falls back to param mode.
 
-**Stop guards.** Wall time, max iterations, no-improvement streak, failure rate.
+**Stop guards.** Wall time, max iterations, no-improvement streak, failure rate
+(`cancelled` iters do not count as failures).
 
 **Checkpoint/resume.** State persisted after every iteration. Survives crashes and restarts.
+
+**Cooperative cancellation** (`controller.intra_iteration_cancel.enabled`). The
+trial calls `from autoresearch_rl.target.progress import emit_progress` per step;
+the engine drains progress reports and runs them through the power-law forecaster.
+When a trial cannot beat the current best, the engine writes a control file and
+the trial's next `emit_progress` call exits with code 42. Status becomes
+`cancelled` (graceful early-out, distinct from `failed`).
+
+**Parallel iterations** (`controller.parallel.enabled`). `K` trials run
+concurrently inside a `ThreadPoolExecutor`, admitted by a resource pool. Diff and
+hybrid policies stay serial — k concurrent diffs would fight the contract.
+`LLMParamPolicy.propose_batch` issues ONE chat call asking for k diverse
+proposals (vs k independent calls). Reward feedback to learnable policies is
+buffered and drained in submission order so PPO sees a stable trial-time sequence.
+
+**Timeline export** (`telemetry.timeline_path`). Writes a Chrome-trace JSON file
+openable directly in `chrome://tracing` or `ui.perfetto.dev`. Spans:
+`policy.propose_batch`, `executor.execute`, `llm.chat_completion`, all
+`basilica.*` phases.
+
+**Diff guardrails** (`policy.required_calls`, default `["emit_progress"]`).
+The diff validator AST-walks the post-patch source and rejects any diff that
+strips a required call. Used to keep load-bearing instrumentation intact across
+LLM-proposed code changes.
+
+**Runtime config validation** runs on every `validate` and `run`. Eight checks
+covering reserved env-var prefixes, missing files / API keys / GPU models,
+unwritable dirs, budget alignment, and positive-presence of `emit_progress` when
+intra-iteration cancel is enabled. Blocking errors exit code 2 before any trial
+starts.
 
 ## Examples
 
 | Example | Policy | Task |
 |---------|--------|------|
 | [minimal-trainable-target](examples/minimal-trainable-target/) | `llm_diff` | Deterministic toy (no GPU) |
+| [parallel-cancel-showcase](examples/parallel-cancel-showcase/) | `random` | End-to-end demo: parallel + cancel + timeline + config validation (no GPU, ~13 s) |
 | [autoresearch-like](examples/autoresearch-like/) | `llm_diff` | Synthetic training loop |
 | [basilica-grpo](examples/basilica-grpo/) | `hybrid` | GRPO post-training: Qwen2.5-0.5B on GSM8K |
 | [deberta-prompt-injection](examples/deberta-prompt-injection/) | `hybrid` | DeBERTa security classifier |
@@ -102,6 +134,28 @@ objective:
 controller:
   checkpoint_path: artifacts/checkpoint.json
   no_improve_limit: 10
+
+  # Optional: cancel doomed trials mid-flight via the power-law forecaster.
+  # Trial must call emit_progress(step=, step_target=, metrics=...) per step.
+  intra_iteration_cancel:
+    enabled: false               # opt-in
+    min_steps: 5                 # don't cancel before this many trial steps
+    poll_interval_s: 5.0         # how often the guard re-evaluates
+    min_reports_before_decide: 5 # need at least this many progress reports
+
+  # Optional: run K iterations concurrently. Diff/hybrid policies stay serial.
+  parallel:
+    enabled: false               # opt-in
+    max_concurrency: 4
+    resources: {gpu: 4}          # ResourcePool admits trials by their resource_cost
+    submit_poll_interval_s: 0.5
+
+telemetry:
+  trace_path: traces/events.jsonl
+  ledger_path: artifacts/results.tsv
+  artifacts_dir: artifacts/runs
+  versions_dir: artifacts/versions
+  timeline_path: traces/timeline.json   # null disables; openable in chrome://tracing
 ```
 
 ## CLI
@@ -125,9 +179,21 @@ artifacts/results.tsv          # per-iteration scores + comparability metadata
 artifacts/versions/v0001/      # kept iterations (versioned artifacts)
   version.json                 # params, metrics, model_dir path
 artifacts/checkpoint.json      # resumable state
-traces/events.jsonl            # structured event trace (proposals, outcomes)
+artifacts/runs/run-XXXX/
+  progress.jsonl               # per-step emit_progress(...) reports
+  control.json                 # cancel signal (only when guard fired)
+  manifest-*.json              # per-iter snapshot
+traces/events.jsonl            # structured event trace (proposals, progress, iterations, summary)
+traces/timeline.json           # Chrome trace JSON (when telemetry.timeline_path set)
 /data/models/v0001/            # trained model checkpoint (if model_output_dir set)
 ```
+
+**Reading the timeline.** Open `traces/timeline.json` in `chrome://tracing` or
+[ui.perfetto.dev](https://ui.perfetto.dev) to see per-iteration spans
+(`policy.propose_batch`, `executor.execute`), Basilica deployment phases
+(`create_deployment`, `wait_ready`, `poll_for_metrics`, `download_model`,
+`cleanup`), and LLM call latencies (`llm.chat_completion` with attempt counts
+and terminal status as args).
 
 **Model persistence.** When `model_output_dir` is set in config, the framework injects
 `AR_MODEL_DIR` into each iteration. The training script saves the model there. On
@@ -148,3 +214,10 @@ python scripts/progress_chart.py artifacts/results.tsv -o progress.png --directi
 
 Generates a Karpathy-style scatter plot: gray (discarded), green (kept), step function
 (running best).
+
+## Architecture and design notes
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module-by-module walkthrough.
+- [`docs/research/`](docs/research/) — RLix-adoption arc: comparison, plan,
+  remediation, deferral notes, velocity log, end-to-end reports.
+- [`CHANGELOG.md`](CHANGELOG.md) — phase-by-phase change log.
