@@ -150,6 +150,36 @@ Cancelled trials show as shorter `executor.execute` spans because the
 trial subprocess exits early when `emit_progress(...)` reads the
 `control.json` file.
 
+## Determinism guarantee
+
+The showcase ships two configs that exercise **two distinct determinism
+contracts**, both verified by `tests/test_showcase_determinism.py`.
+
+### Strict — `config-deterministic.yaml` (cancel disabled)
+
+Two runs with the same seed produce **bit-identical** per-iter params,
+keep / discard decisions, kept version directories, and `best_value`.
+The parallel engine itself is deterministic when cancel timing
+(filesystem-polling jitter) is removed.
+
+### Relaxed — `config.yaml` (cancel enabled)
+
+Two runs produce identical **params** and identical **`best_value`**.
+The cancellation set is allowed to differ because cancel decisions
+depend on filesystem-polling timing — a trial whose early-step loss
+straddles the current best can be cancelled in one run and survive in
+another. The synthetic landscape's `min_steps: 8` /
+`min_reports_before_decide: 10` are tuned so the optimum (iter 12) is
+reliably kept; lowering them resurrects the flake.
+
+### Allowed to differ in **both** contracts
+
+- exact `val_loss` recorded for a cancelled trial
+- per-event timestamps in `traces/timeline.json` (real wall-clock)
+- `episode_id` (uuid generated at run start)
+- the exact ordering of timeline spans across worker threads
+- `elapsed_s` per iter
+
 ## What this does NOT exercise
 
 - **LLM-driven policies** (`llm`, `llm_diff`, `hybrid`). Use `random`

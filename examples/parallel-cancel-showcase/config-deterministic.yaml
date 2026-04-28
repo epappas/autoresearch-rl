@@ -1,4 +1,13 @@
-name: parallel-cancel-showcase
+name: parallel-cancel-showcase-deterministic
+
+# Same as config.yaml but with intra_iteration_cancel DISABLED. Used by
+# tests/test_showcase_determinism.py to assert that the parallel engine +
+# random policy + propose_batch flow is bit-deterministic when cancel
+# timing (which depends on filesystem polling jitter) is removed.
+#
+# The main config.yaml remains the demo that exercises cancellation;
+# its decision set is allowed to vary because cancel timing is racy by
+# design. See README §Determinism for the full breakdown.
 
 program_path: examples/parallel-cancel-showcase/program.md
 
@@ -28,18 +37,7 @@ controller:
     resources:
       gpu: 4
     submit_poll_interval_s: 0.1
-  intra_iteration_cancel:
-    enabled: true
-    # Wait for 10 progress reports before letting the forecaster decide.
-    # The synthetic landscape converges on an exponential curve: at step
-    # ~5 the loss is still ~3x its asymptote, which makes the power-law
-    # fit very pessimistic. Waiting 10 reports lets the forecaster see the
-    # decay clearly before flagging a trial as doomed. Without this, iter
-    # 12 (the global optimum) is sometimes cancelled — see
-    # tests/test_showcase_determinism.py.
-    min_steps: 8
-    poll_interval_s: 0.1
-    min_reports_before_decide: 10
+  # intra_iteration_cancel intentionally NOT enabled.
 
 comparability:
   budget_mode: parallel_wallclock
