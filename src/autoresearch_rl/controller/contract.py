@@ -24,16 +24,31 @@ def validate_contract_files_exist(contract: ContractConfig, root: str = ".") -> 
 
 
 def validate_diff_against_contract(diff: str, contract: ContractConfig) -> tuple[bool, str]:
+    """Reject diffs that touch files outside the mutable scope.
+
+    Path comparison is on basename: LLM-generated diffs use basenames
+    (the LLM only sees filenames, never workdir prefixes), but the
+    contract config stores workdir-relative paths
+    (e.g. examples/foo/train.py). Comparing literally rejects every
+    well-formed diff. We normalize to basename on both sides.
+    """
+    import os.path
+
     touched = extract_touched_files_from_diff(diff)
     if not touched:
         return True, ""
 
+    frozen_base = os.path.basename(contract.frozen_file)
+    program_base = os.path.basename(contract.program_file)
+    mutable_base = os.path.basename(contract.mutable_file)
+
     for path in touched:
-        if path == contract.frozen_file:
+        path_base = os.path.basename(path)
+        if path_base == frozen_base:
             return False, f"frozen_file_mutation_blocked:{path}"
-        if path == contract.program_file:
+        if path_base == program_base:
             return False, f"program_file_mutation_blocked:{path}"
-        if path != contract.mutable_file:
+        if path_base != mutable_base:
             return False, f"out_of_scope_mutation_blocked:{path}"
 
     return True, ""
