@@ -217,12 +217,15 @@ uv run autoresearch-rl upload config.yaml --repo user/my-model
 
 ## Progress chart
 
+Optional dependency (matplotlib) under the `chart` extra:
+
 ```bash
-python scripts/progress_chart.py artifacts/results.tsv -o progress.png --direction max
+uv sync --extra dev --extra chart
+uv run python scripts/progress_chart.py artifacts/results.tsv -o progress.png --direction min
 ```
 
 Generates a Karpathy-style scatter plot: gray (discarded), green (kept), step function
-(running best).
+(running best). See [`examples/parallel-cancel-showcase/progress.png`](examples/parallel-cancel-showcase/progress.png) for an example.
 
 ## Architecture and design notes
 

@@ -25,6 +25,9 @@ http = [
 basilica = [
   "basilica-sdk>=0.20",
 ]
+chart = [
+  "matplotlib>=3.7",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",

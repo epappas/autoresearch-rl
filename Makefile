@@ -43,6 +43,12 @@ showcase-clean: ## Wipe showcase artifacts/ and data/
 	       examples/parallel-cancel-showcase/artifacts-serial \
 	       examples/parallel-cancel-showcase/data
 
+showcase-chart: ## Regenerate examples/parallel-cancel-showcase/progress.png from latest run (needs --extra chart)
+	uv run python scripts/progress_chart.py \
+	    examples/parallel-cancel-showcase/artifacts/results.tsv \
+	    -o examples/parallel-cancel-showcase/progress.png \
+	    --direction min
+
 validate: ## Validate a config: make validate CONFIG=path/to/config.yaml
 	@if [ -z "$(CONFIG)" ]; then echo "usage: make validate CONFIG=path/to/config.yaml"; exit 2; fi
 	uv run autoresearch-rl validate $(CONFIG)
