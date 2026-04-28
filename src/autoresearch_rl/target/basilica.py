@@ -475,10 +475,14 @@ class BasilicaTarget:
             return
         if not data.strip():
             return
-        # Skip uploads we've already pushed (size-cached so we don't spam
-        # the deployment server every 5s of polling).
+        # Skip uploads we've already pushed. Cache by SHA-256 (not size)
+        # so a payload edit that keeps the same byte length still uploads
+        # — e.g. {"action":"cancel","reason":"X"} -> ...,"reason":"Y"} of
+        # equal length used to be silently dropped.
+        import hashlib
+        content_hash = hashlib.sha256(data).hexdigest()
         last = getattr(self, "_last_control_pushed", {}).get(run_dir)
-        if last == len(data):
+        if last == content_hash:
             return
         try:
             base_url = deployment.url.rstrip("/")
@@ -500,7 +504,7 @@ class BasilicaTarget:
         if cache is None:
             cache = {}
             self._last_control_pushed = cache  # type: ignore[attr-defined]
-        cache[run_dir] = len(data)
+        cache[run_dir] = content_hash
         logger.info("propagated cancel control to %s (%d bytes)", base_url, len(data))
 
     def _fetch_progress(self, deployment: _Deployment, progress_path: Path) -> int:

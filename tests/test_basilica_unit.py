@@ -284,8 +284,40 @@ class TestPropagateControl:
             mock_urlopen.return_value = mock_resp
             target._propagate_control(deployment, str(tmp_path))
             target._propagate_control(deployment, str(tmp_path))
-        # Second call must NOT re-upload (size cached).
+        # Second call must NOT re-upload (content hash cached).
         assert mock_urlopen.call_count == 1
+
+    def test_reuploads_when_content_changes_at_same_length(self, tmp_path) -> None:
+        """Edit reason text to a same-length string -> hash differs -> re-upload."""
+        from unittest.mock import MagicMock, patch
+
+        import json
+        target = self._build_target()
+        deployment = MagicMock()
+        deployment.url = "http://example/"
+        ctrl = tmp_path / "control.json"
+
+        # Two payloads of identical byte length, different content.
+        first = json.dumps({"action": "cancel", "reason": "AAAAA"})
+        second = json.dumps({"action": "cancel", "reason": "BBBBB"})
+        assert len(first) == len(second), "test fixture broken: lengths differ"
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.read = MagicMock(return_value=b"")
+            mock_urlopen.return_value = mock_resp
+
+            ctrl.write_text(first)
+            target._propagate_control(deployment, str(tmp_path))
+            ctrl.write_text(second)
+            target._propagate_control(deployment, str(tmp_path))
+
+        # Must have uploaded BOTH (content differs even though length is same).
+        assert mock_urlopen.call_count == 2, (
+            "size-cache regression: equal-length payload edit was silently dropped"
+        )
 
     def test_upload_failure_is_swallowed(self, tmp_path) -> None:
         from unittest.mock import MagicMock, patch
