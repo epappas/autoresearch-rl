@@ -224,6 +224,8 @@ The current checkpoint records a single `iter_idx`. With batches in flight, reco
 
 ## Phase 5 — F5: Multi-LoRA iteration-sharing target (medium-fit, optional)
 
+> **Status (2026-04-28)**: deferred. See [`RLix-Phase5-Deferred.md`](./RLix-Phase5-Deferred.md) for rationale, re-open triggers, and a concrete implementation sketch. The summary below is kept for historical context.
+
 Only implement if a real example needs it (e.g., the security-judge campaign wants to compare 5 reward shaping variants per GPU).
 
 ### 5.1 New target type
@@ -374,7 +376,7 @@ Phase 0 (housekeeping)           ── S  (DONE 2026-04-27)
   └─ Phase 4 (timeline)          ── S, parallelizable
        └─ Phase 3 (parallel)     ── L
             + Phase 7.4, 7.5     ── batch proposals + diversity (S, ships with F3)
-            └─ Phase 5 (LoRA)    ── M, optional, defer until needed
+            └─ Phase 5 (LoRA)    ── M, optional, DEFERRED 2026-04-28 (see RLix-Phase5-Deferred.md)
 ```
 
 **Calibration note (R4.a)**: original day-estimates were gut-feel. Sizes above are bounds, not commitments. Re-estimate after 3 merged PRs.
