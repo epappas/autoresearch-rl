@@ -55,4 +55,7 @@ validate: ## Validate a config: make validate CONFIG=path/to/config.yaml
 
 real-llm: ## Run real-LLM prompt validation against Kimi K2.6 (needs MOONSHOT_API_KEY)
 	@if [ -z "$(MOONSHOT_API_KEY)" ]; then echo "usage: MOONSHOT_API_KEY=sk-... make real-llm"; exit 2; fi
-	uv run pytest tests/eval/real_llm.py -v
+	uv run pytest tests/eval/test_real_llm.py -v
+
+smoke: ## End-to-end smoke tests for in-tree CPU examples (~5 s/example)
+	uv run pytest tests/test_examples_smoke.py -v
