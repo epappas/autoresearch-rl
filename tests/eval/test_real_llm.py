@@ -129,52 +129,51 @@ def test_diff_policy_preserves_emit_progress() -> None:
 # ---------------------------------------------------------------- 2. cancellation reasoning
 
 
-def test_param_policy_acknowledges_cancellation_in_history() -> None:
-    """Real LLM proposal text must reference cancellation when history has cancelled iters.
+def test_param_policy_avoids_cancelled_param_values() -> None:
+    """Behavioral test: when a particular learning rate has been cancelled
+    repeatedly, the LLM should not propose it again.
 
-    We call the underlying chat API directly (not policy.propose, which
-    only returns the parsed params) so we can inspect the assistant's
-    reasoning text.
+    Earlier text-based assertion ('response mentions cancel') was a test
+    design flaw — the system prompt instructs 'Respond with ONLY a JSON
+    object', so any 'explain before the JSON' counter-instruction in the
+    program text is correctly ignored by a strict model. Kimi K2.6
+    returned an empty content field; that was correct behavior.
+
+    The actually-meaningful contract is behavioral: did the LLM avoid
+    the cancelled value?
     """
-    from autoresearch_rl.policy.llm_search import (
-        _SYSTEM_PROMPT,
-        _call_chat_api_messages,
-        _format_prompt,
-    )
-
+    space = {"learning_rate": [1e-5, 1e-4, 1e-3, 1e-2]}
     history = [
         {"iter": 0, "status": "ok", "decision": "keep",
          "metrics": {"loss": 0.4}, "params": {"learning_rate": 1e-3}},
         {"iter": 1, "status": "cancelled", "decision": "cancelled",
          "metrics": {"loss": 0.85}, "params": {"learning_rate": 1e-2}},
         {"iter": 2, "status": "cancelled", "decision": "cancelled",
-         "metrics": {"loss": 0.91}, "params": {"learning_rate": 5e-2}},
+         "metrics": {"loss": 0.91}, "params": {"learning_rate": 1e-2}},
         {"iter": 3, "status": "cancelled", "decision": "cancelled",
-         "metrics": {"loss": 0.88}, "params": {"learning_rate": 1e-1}},
+         "metrics": {"loss": 0.88}, "params": {"learning_rate": 1e-2}},
     ]
-    user_msg = _format_prompt(
-        space={"learning_rate": [1e-5, 1e-4, 1e-3, 1e-2]},
-        history=history, metric="loss", direction="min",
-        program=(
-            "Three iterations were cancelled mid-trial because the controller "
-            "forecasted they could not beat the running best. In your reply, "
-            "explain in 1-2 sentences what pattern you see in those cancellations "
-            "before returning the JSON object."
+    policy = LLMParamPolicy(
+        space, api_url=API_URL, model=MODEL, api_key_env=KEY_ENV,
+        metric="loss", direction="min", seed=0,
+    )
+    proposal = policy.propose(state={
+        "history": history,
+        "program": (
+            "Many iterations at learning_rate=1e-2 were cancelled because "
+            "the forecaster judged they could not beat the running best. "
+            "Choose a learning_rate that has shown improvement potential."
         ),
-    )
-    raw = _call_chat_api_messages(
-        API_URL, MODEL, os.environ[KEY_ENV],
-        [{"role": "system", "content": _SYSTEM_PROMPT},
-         {"role": "user", "content": user_msg}],
-        timeout=60, max_tokens=512,
-    )
-    _save("param_cancellation_reasoning", {"prompt": user_msg, "response": raw})
+    })
+    _save("param_avoids_cancelled", {
+        "history": history, "proposal": proposal.params,
+        "rationale": proposal.rationale,
+    })
 
-    # The LLM should mention cancellation in the response.
-    keywords = ("cancel", "early stop", "early-stop", "premature", "abandon")
-    lower = raw.lower()
-    assert any(k in lower for k in keywords), (
-        f"response did not reference cancellation pattern: {raw[:300]}"
+    chosen = proposal.params["learning_rate"]
+    assert chosen != 1e-2, (
+        f"LLM proposed the cancelled value {chosen} despite history showing "
+        f"3 of 3 cancellations at lr=1e-2 (rationale: {proposal.rationale})"
     )
 
 

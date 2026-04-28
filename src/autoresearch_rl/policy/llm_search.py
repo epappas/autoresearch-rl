@@ -115,6 +115,7 @@ def _call_chat_api_messages(
     timeout: int,
     max_tokens: int = 1024,
     max_retries: int = 5,
+    temperature: float = 1.0,
 ) -> str:
     from autoresearch_rl.telemetry.timeline import global_span
 
@@ -123,7 +124,7 @@ def _call_chat_api_messages(
         "model": model,
         "messages": messages,
         "stream": False,
-        "temperature": 0.7,
+        "temperature": temperature,
         "max_tokens": max_tokens,
     }
     data = json.dumps(payload).encode("utf-8")
@@ -131,6 +132,7 @@ def _call_chat_api_messages(
         "model": model,
         "msg_count": len(messages),
         "max_tokens": max_tokens,
+        "temperature": temperature,
     }
     span_cm = global_span("llm.chat_completion", category="llm", args=span_args)
     span_cm_args = span_cm.__enter__()
@@ -179,7 +181,18 @@ def _do_request(
                 )
                 _time.sleep(wait)
                 continue
+            # Capture the response body so the caller can see WHY a 4xx
+            # was returned (most providers include a structured error
+            # message). Truncate to keep logs sane.
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")[:500]
+            except Exception:
+                err_body = "<unreadable>"
             span_args["status"] = f"http_{e.code}"
+            span_args["error_body"] = err_body
+            logger.error(
+                "LLM API error %d (no retry): %s", e.code, err_body,
+            )
             raise
         except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
             if attempt < max_retries:
