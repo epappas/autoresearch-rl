@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import string
+import threading
 import time
 import urllib.request
 import uuid
@@ -168,7 +169,7 @@ class BasilicaTarget:
 
     def __init__(self, cfg: TargetConfig) -> None:
         try:
-            from basilica import BasilicaClient  # type: ignore[import-not-found]
+            from basilica import BasilicaClient  # type: ignore[import-untyped]
         except ImportError as e:
             raise ImportError(
                 "basilica-sdk required. Install: pip install basilica-sdk"
@@ -177,20 +178,28 @@ class BasilicaTarget:
         self._client = BasilicaClient()
         self._cfg = cfg
         self._bcfg = cfg.basilica
-        self._last_train_outcome: RunOutcome | None = None
+        # Per-run-dir cache so concurrent run()/eval() pairs from the
+        # parallel engine don't race on a single shared slot. Pre-fix
+        # this was a single attribute and Thread A's eval() could return
+        # Thread B's training outcome.
+        self._last_train_outcome: dict[str, RunOutcome] = {}
+        self._cache_lock = threading.Lock()
 
     def run(self, *, run_dir: str, params: dict[str, object]) -> RunOutcome:
         outcome = self._deploy_and_collect(
             params=params, run_dir=run_dir,
             cmd=self._cfg.train_cmd, phase="train",
         )
-        self._last_train_outcome = outcome
+        with self._cache_lock:
+            self._last_train_outcome[run_dir] = outcome
         return outcome
 
     def eval(self, *, run_dir: str, params: dict[str, object]) -> RunOutcome:
         if not self._cfg.eval_cmd:
-            if self._last_train_outcome is not None:
-                return self._last_train_outcome
+            with self._cache_lock:
+                cached = self._last_train_outcome.pop(run_dir, None)
+            if cached is not None:
+                return cached
             return RunOutcome(
                 status="ok", metrics={}, stdout="", stderr="",
                 elapsed_s=0.0, run_dir=run_dir,
@@ -227,7 +236,7 @@ class BasilicaTarget:
         cmd: list[str] | None,
         phase: str,
     ) -> RunOutcome:
-        from basilica import (  # type: ignore[import-not-found]
+        from basilica import (  # type: ignore[import-untyped]
             Deployment, HealthCheckConfig, ProbeConfig,
         )
 

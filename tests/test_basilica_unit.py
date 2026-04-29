@@ -331,3 +331,61 @@ class TestPropagateControl:
 
         with patch("urllib.request.urlopen", side_effect=ConnectionError("boom")):
             target._propagate_control(deployment, str(tmp_path))  # must not raise
+
+
+class TestRunEvalCachePerRunDir:
+    """Race-free run()/eval() cache (fix for parallel engine + Basilica)."""
+
+    def _build_target(self) -> BasilicaTarget:
+        target = BasilicaTarget.__new__(BasilicaTarget)
+        target._client = None  # type: ignore[attr-defined]
+        # Replicate __init__ tail explicitly so we don't need basilica-sdk
+        # available in the test env.
+        import threading
+        target._cfg = None  # type: ignore[attr-defined]
+        target._bcfg = None  # type: ignore[attr-defined]
+        target._last_train_outcome = {}  # type: ignore[attr-defined]
+        target._cache_lock = threading.Lock()  # type: ignore[attr-defined]
+        return target
+
+    def test_eval_returns_per_run_dir_outcome_not_global_last(self) -> None:
+        """Pre-fix: eval() returned the LAST run() outcome regardless of run_dir.
+        Under parallel mode that meant Thread A could see Thread B's metrics.
+        """
+        from unittest.mock import MagicMock
+
+        target = self._build_target()
+        target._cfg = MagicMock()
+        target._cfg.eval_cmd = None  # the no-eval-cmd code path
+
+        from autoresearch_rl.target.interface import RunOutcome
+
+        out_a = RunOutcome(
+            status="ok", metrics={"score": 0.4}, stdout="A", stderr="",
+            elapsed_s=10.0, run_dir="/run-A",
+        )
+        out_b = RunOutcome(
+            status="ok", metrics={"score": 0.7}, stdout="B", stderr="",
+            elapsed_s=20.0, run_dir="/run-B",
+        )
+        # Simulate two parallel run() calls landing outcomes into the cache.
+        target._last_train_outcome["/run-A"] = out_a
+        target._last_train_outcome["/run-B"] = out_b
+
+        # Each eval() must return ITS run_dir's outcome, not the most-recent.
+        eval_a = target.eval(run_dir="/run-A", params={})
+        eval_b = target.eval(run_dir="/run-B", params={})
+        assert eval_a.metrics == {"score": 0.4}, eval_a
+        assert eval_b.metrics == {"score": 0.7}, eval_b
+        # Cache is consumed on eval (pop), so the dict is empty after both.
+        assert target._last_train_outcome == {}
+
+    def test_eval_returns_empty_when_no_cached_run(self) -> None:
+        from unittest.mock import MagicMock
+
+        target = self._build_target()
+        target._cfg = MagicMock()
+        target._cfg.eval_cmd = None
+        outcome = target.eval(run_dir="/no-prior-run", params={})
+        assert outcome.status == "ok"
+        assert outcome.metrics == {}
