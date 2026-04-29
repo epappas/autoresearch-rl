@@ -159,7 +159,7 @@ if _src:
 rc = subprocess.call($cmd, env=dict(**__import__("os").environ))
 sys.stdout.flush()
 sys.stderr.flush()
-time.sleep(15)
+time.sleep($post_sleep)
 sys.exit(rc)
 """)
 
@@ -210,7 +210,11 @@ class BasilicaTarget:
         )
 
     @staticmethod
-    def _build_bootstrap_cmd(user_cmd: list[str], setup_cmd: str | None = None) -> str:
+    def _build_bootstrap_cmd(
+        user_cmd: list[str],
+        setup_cmd: str | None = None,
+        post_trial_sleep_s: int = 90,
+    ) -> str:
         """Wrap user command in bootstrap that starts health server."""
         setup = setup_cmd
         setup_block = ""
@@ -220,7 +224,9 @@ class BasilicaTarget:
                 f"_sp.check_call({repr(setup)}, shell=True)\n"
             )
         cmd_repr = repr(user_cmd)
-        script = _BOOTSTRAP_TEMPLATE.substitute(port=HEALTH_PORT, cmd=cmd_repr)
+        script = _BOOTSTRAP_TEMPLATE.substitute(
+            port=HEALTH_PORT, cmd=cmd_repr, post_sleep=post_trial_sleep_s,
+        )
         # Insert setup block after the health server start
         marker = "threading.Thread("
         idx = script.index(marker)
@@ -267,7 +273,10 @@ class BasilicaTarget:
         if self._cfg.prepare_cmd:
             prepare = " ".join(self._cfg.prepare_cmd)
             setup = f"{setup} && {prepare}" if setup else prepare
-        bootstrap = self._build_bootstrap_cmd(user_cmd, setup_cmd=setup or None)
+        bootstrap = self._build_bootstrap_cmd(
+            user_cmd, setup_cmd=setup or None,
+            post_trial_sleep_s=self._bcfg.post_trial_sleep_s,
+        )
 
         health_check = HealthCheckConfig(
             liveness=ProbeConfig(

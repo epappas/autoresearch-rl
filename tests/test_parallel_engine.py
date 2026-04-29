@@ -307,6 +307,64 @@ def test_resource_pool_caps_concurrency(tmp_path: Path) -> None:
 # ---------------------------------------------------------------- stop guards
 
 
+def test_propose_batch_not_called_after_max_iterations_reached(tmp_path: Path) -> None:
+    """Regression: probe5 surfaced ~450 wasted propose_batch spans because
+    the submit loop fired propose every poll-tick whenever slots_open>0,
+    even after max_iterations was already covered by in_flight + completed.
+
+    Free for RandomPolicy; very expensive for LLMParamPolicy where each
+    propose is a real chat call. This test pins the bounded behavior.
+    """
+    space = {"lr": [1e-5, 1e-4, 1e-3, 1e-2]}
+
+    class _CountingExec:
+        def __init__(self) -> None:
+            self.count = 0
+
+        def execute(self, proposal: ParamProposal, run_dir: str) -> Outcome:
+            self.count += 1
+            time.sleep(0.05)
+            return Outcome(
+                status="ok", metrics={"loss": 0.5}, stdout="",
+                stderr="", elapsed_s=0.05, run_dir=run_dir,
+            )
+
+    class _CountingPolicy(RandomPolicy):
+        def __init__(self, space: dict, seed: int = 0) -> None:
+            super().__init__(space, seed=seed)
+            self.batch_calls = 0
+
+        def propose_batch(self, state, k):
+            self.batch_calls += 1
+            return super().propose_batch(state, k)
+
+    policy = _CountingPolicy(space, seed=0)
+    run_experiment_parallel(
+        executor=_CountingExec(),
+        policy=policy,
+        objective=ObjectiveConfig(metric="loss", direction="min"),
+        controller=ControllerConfig(
+            max_iterations=4,
+            parallel=ParallelConfig(
+                enabled=True, max_concurrency=4, resources={"gpu": 4},
+                submit_poll_interval_s=0.05,
+            ),
+        ),
+        telemetry=_telemetry(tmp_path),
+        comparability_cfg=ComparabilityConfig(strict=False),
+        proposal_state_builder=lambda h, p: {"history": h, "program": p},
+        proposal_params_extractor=lambda p: getattr(p, "params", {}),
+        enable_run_manifest=False, enable_versions=False, enable_tracker=False,
+    )
+    # Tight bound: max_iterations=4, max_concurrency=4 — one batch fills
+    # the pool, no further propose calls should happen. Allow tiny slack
+    # (a stray pre-stop poll-tick) but anything > 4 is a regression.
+    assert policy.batch_calls <= 4, (
+        f"propose_batch called {policy.batch_calls} times for max_iter=4 "
+        f"(would be wasteful for LLM batch policies)"
+    )
+
+
 def test_parallel_cancel_fires_with_real_subprocess(tmp_path: Path) -> None:
     """Real subprocess via CommandTarget; iter 1 emits worsening series and
     parallel engine cancels mid-trial (R3.a/R3.b path is actually exercised)."""

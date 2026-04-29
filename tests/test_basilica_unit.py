@@ -189,6 +189,20 @@ class TestBuildBootstrapCmd:
         script = BasilicaTarget._build_bootstrap_cmd(cmd)
         assert repr(cmd) in script
 
+    def test_post_trial_sleep_default_is_90(self) -> None:
+        """Bootstrap stays alive 90s post-trial so the controller can pull
+        the model files before container shutdown. Earlier 15s default
+        caused HTTP 500/503 on _download_model — see probe5 logs."""
+        script = BasilicaTarget._build_bootstrap_cmd(["python3", "train.py"])
+        assert "time.sleep(90)" in script
+
+    def test_post_trial_sleep_is_configurable(self) -> None:
+        script = BasilicaTarget._build_bootstrap_cmd(
+            ["python3", "train.py"], post_trial_sleep_s=300,
+        )
+        assert "time.sleep(300)" in script
+        assert "time.sleep(90)" not in script
+
     def test_dict_literals_stay_literal(self) -> None:
         # After string.Template refactor, JSON dict literals in the script
         # must round-trip without {{}} escaping.

@@ -26,6 +26,15 @@ class BasilicaConfig(BaseModel):
     # concurrent deployments contending for network) requires more —
     # observed 600s timeouts at K=4 with the security-judge example.
     ready_timeout_s: int = 600
+    # Seconds the bootstrap script sleeps AFTER the trial exits before
+    # killing itself. The controller needs a window to (a) notice the
+    # final metrics in the polled logs, (b) call /model/files +
+    # /model/download/<path> on the bootstrap's HTTP server. With the
+    # earlier 15s value, a fast-finishing trial whose stdout flushed
+    # just after a poll-cycle would have its container shut down before
+    # the controller's next poll → HTTP 500/503 on download. 90s gives
+    # comfortable headroom even with adaptive 20s poll backoff.
+    post_trial_sleep_s: int = 90
 
 
 class TargetConfig(BaseModel):

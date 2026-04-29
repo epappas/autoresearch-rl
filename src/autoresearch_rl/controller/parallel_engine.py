@@ -230,8 +230,20 @@ def run_experiment_parallel(
 
     try:
         while not _stop_requested() or in_flight or completed:
-            # Submit phase: fill the pool up to max_concurrency.
+            # Submit phase: fill the pool up to max_concurrency BUT only as
+            # many as are still needed. Without the second clamp, the loop
+            # called propose_batch every poll-tick after the first trial
+            # finished — observed ~450 wasted spans on probe5 (max_iter=4,
+            # K=4, ~15 min waiting × 2s poll). Free for RandomPolicy;
+            # very expensive for LLMParamPolicy (real chat call per spin).
             slots_open = pcfg.max_concurrency - len(in_flight)
+            if controller.max_iterations is not None:
+                remaining_needed = (
+                    controller.max_iterations
+                    - iterations_done - len(in_flight) - len(completed)
+                )
+                slots_open = min(slots_open, max(0, remaining_needed))
+
             if slots_open > 0 and not _stop_requested():
                 with timeline.span(
                     "policy.propose_batch",
