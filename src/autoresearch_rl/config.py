@@ -20,6 +20,12 @@ class BasilicaConfig(BaseModel):
     ttl_seconds: int = 7200
     min_gpu_memory_gb: int | None = None
     setup_cmd: str | None = None
+    # Max seconds to wait for the container to reach ready state. Default
+    # 600 covers a serial run with light setup_cmd. Heavy setup_cmd
+    # (large pip install + model preload) under parallel mode (multiple
+    # concurrent deployments contending for network) requires more —
+    # observed 600s timeouts at K=4 with the security-judge example.
+    ready_timeout_s: int = 600
 
 
 class TargetConfig(BaseModel):

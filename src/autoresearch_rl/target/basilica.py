@@ -344,9 +344,9 @@ class BasilicaTarget:
             with global_span(
                 "basilica.wait_ready",
                 category="basilica",
-                args={"name": name, "timeout_s": min(timeout, 600)},
+                args={"name": name, "timeout_s": min(timeout, self._bcfg.ready_timeout_s)},
             ) as wait_args:
-                while waited < min(timeout, 600):
+                while waited < min(timeout, self._bcfg.ready_timeout_s):
                     status = deployment.status()
                     if status.is_ready:
                         ready = True
