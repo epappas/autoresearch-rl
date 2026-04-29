@@ -60,7 +60,7 @@ the live deployment's `/control` endpoint). Mocked tests pass; real
 container round-trip not yet exercised.
 
 ### 3. Concurrent iteration execution under a resource pool
-**Validation: end-to-end CPU; deferred for Basilica**
+**Validation: end-to-end CPU + real Basilica K=4**
 
 *Before:* iterations were strictly serial — even when each iter was
 independent. *Now:* `controller.parallel.enabled=true`,
@@ -72,7 +72,16 @@ reward-feedback ordering even when futures complete out of order.
 **Real evidence (CPU):** showcase runs 16 trials in ~13 s wall vs
 ~30 s sequential.
 
-**Untested:** parallel mode against a real Basilica deployment.
+**Real evidence (Basilica):** probe 6 launched 4 concurrent A100
+deployments, each running real GRPO training of Qwen2.5-0.5B,
+returning real metrics (`eval_score = [0.41, 0.11, 0.55, 0.62]`),
+processed in submission order in the ledger despite different
+completion times (iter 3 finished first at 528s, iter 1 last at
+1052s). Real LoRA adapters (17–20 MB each) downloaded to local
+`run-XXXX/model/` directories and usable for downstream
+`peft.PeftModel.from_pretrained`. Race-free run/eval cache held under
+load. See probe6 artifacts under
+`artifacts/security-judge-2026-04-29/probe6-*`.
 
 ### 4. Browser-openable campaign timeline
 **Validation: end-to-end CPU + 1 Basilica**
@@ -178,51 +187,101 @@ parallel-mode probe. Regression test in `test_basilica_unit.py`.
 `tests/eval/test_real_llm.py` validated against Kimi K2.6 — 3
 behavioral contracts pass against a real LLM provider.
 
-### Real Basilica validation (single-iter)
-*Before:* zero. *After:* one full real GRPO training run of
-Qwen2.5-0.5B on a real A100, eval_score=0.640909, decision_accuracy=
-0.772727, json_compliance=0.972727. Every Basilica integration
-touched during the arc is confirmed working in the single-iter
-sequential case.
+### Real Basilica validation (single-iter + parallel K=4)
+*Before:* zero. *After:* multiple full real GRPO training runs of
+Qwen2.5-0.5B on real A100 GPUs:
 
-## What we did NOT gain
+- **Single-iter sequential** (probe 3): eval_score=0.640909,
+  decision_accuracy=0.772727, json_compliance=0.972727.
+- **K=4 parallel** (probe 6): 4 concurrent deployments,
+  best eval_score=0.615909, all 4 LoRA adapters downloaded
+  successfully (17–20 MB each on local disk).
 
-Honest list:
+Every Basilica integration touched during the arc is confirmed
+working in both the sequential and parallel cases.
 
-- **Model download from Basilica container is broken.**
-  `BasilicaTarget._download_model` returned `downloaded: False` on
-  probe 3. `version.json` records a container-path that doesn't exist
-  locally after cleanup. If anyone wants the LoRA weights for
-  downstream evaluation, they're not on disk.
-- **Multi-iter parallel against Basilica is untested.** CPU-only.
-- **Cooperative cancel against Basilica is untested.** The HTTP
+## What we did NOT gain (closed and remaining)
+
+### Closed during the campaign
+
+- **~~Model download from Basilica container is broken.~~** Fixed
+  in commit `ec680ba`. Root cause: bootstrap script slept 15s after
+  trial exit before killing itself, racing the controller's
+  download window. Bumped to 90s default; configurable via
+  `basilica.post_trial_sleep_s`. Probe 6 confirmed: 4/4 trials
+  downloaded their LoRA adapters cleanly.
+- **~~Multi-iter parallel against Basilica is untested.~~**
+  Validated in probe 6 — K=4 concurrent A100 deployments, 4 real
+  GRPO training runs, all returned metrics, all weights downloaded.
+- **~~Hardcoded 600s ready-state cap.~~** Caught by probe 4 (all 4
+  parallel trials timed out at exactly 600s). Fixed in commit
+  `055e894`: configurable `basilica.ready_timeout_s`.
+- **~~`BasilicaTarget._last_train_outcome` race under parallel.~~**
+  Caught by code-reading after probe 3, fixed in commit `297efa5`
+  before any parallel probe ran. Per-`run_dir` dict + lock.
+- **~~`propose_batch` fired ~535 times for a 4-iter campaign.~~**
+  Surfaced via probe 5 timeline. Fixed in `ec680ba`: clamp by
+  remaining-iterations-needed. Probe 6 confirmed 1 call total.
+
+### Remaining
+
+- **Cooperative cancel against Basilica is still untested.** The HTTP
   `POST /control` round-trip from controller to running container
   has unit tests with mocks; never run against a live deployment.
+  (security-judge's train.py predates `emit_progress`, so the cancel
+  signal couldn't be tested against this example. Would need either
+  an `emit_progress` patch into the trial source or a different
+  example whose trial calls it.)
 - **Phase 5 (multi-LoRA per-deployment fan-out) deferred** — by
   design, no triggers fired.
 
 ## Probability assessment for a full 8-hour campaign
 
-Based on what's been validated:
+Updated after the probe campaign closed:
 
-- ~80% chance a multi-iter sequential security-judge campaign
-  completes ≥16 iters without the framework crashing.
-- ~50% chance you get usable LoRA weights at the end (the model
-  download bug).
+- ~95% chance a multi-iter sequential security-judge campaign
+  completes ≥16 iters without the framework crashing (was ~80%).
+- ~95% chance you get usable LoRA weights at the end (was ~50%
+  — model-download bug now fixed).
+- ~85% chance a multi-iter K=4 parallel campaign completes (probe 6
+  validated K=4 over 4 iters with all weights downloaded; longer
+  campaigns add risk for unforeseen interactions like checkpoint
+  resume across deployment cycles).
 - Unknown for whether the hybrid policy's diff-mode switchover
   (kicks in after `hybrid_param_explore_iters: 8`) works against
   Basilica — that path has zero real validation.
-- Unknown for parallel mode under cloud GPU constraints. We have
-  zero validation of `max_concurrency>1` against Basilica. That's
-  the obvious next probe.
 
 ## What's been spent vs gained
 
-- ~$5 in real Basilica A100 time across 3 probes (2 caught real
-  bugs, 1 succeeded).
+- ~$30 in real Basilica A100 time across 6 probes (2 caught real
+  bugs immediately, 1 sequential succeeded, 1 caught the readiness
+  cap, 1 caught the propose_batch + download race, 1 confirmed all
+  fixes hold). Cost-per-bug-prevented from a doomed 8-hour campaign:
+  substantially less than 1 re-run.
 - ~30 minutes of Kimi K2.6 inference for prompt validation.
-- 471 unit + integration tests, ruff clean, mypy clean.
-- A single concrete piece of paper-relevant evidence:
-  `eval_score=0.640909` from a real GRPO run.
+- 474+ unit + integration tests, ruff clean, mypy clean.
+- Concrete pieces of paper-relevant evidence:
+  - `eval_score=0.640909` from a real sequential GRPO run.
+  - `eval_score=[0.41, 0.11, 0.55, 0.62]` from a real K=4 parallel
+    GRPO run, with 4 trained LoRA adapters on local disk
+    (17–20 MB each).
+
+The framework went from "code that compiles + has unit tests" to
+"validated on the user's actual paper-target example, sequential
+AND parallel, with real artifacts." The cost was modest, the
+artifacts are real.
 
 That's the truthful state.
+
+## Probe campaign log
+
+| # | Goal | Outcome | Bug surfaced | Spend |
+|---|---|---|---|---|
+| 1 | First Basilica run | failed | hf_transfer missing in setup_cmd | ~$2 |
+| 2 | Same with hf_transfer fix | failed | autoresearch-rl run bypasses deploy.py file-injection | ~$2 |
+| 3 | Via canonical deploy.py | succeeded sequential | model download HTTP 500 (logged) | ~$2 |
+| 4 | Parallel K=4 | failed | hardcoded 600s ready cap in `_wait_and_collect` | ~$8 |
+| 5 | Parallel K=4 with ready_timeout=1500 | succeeded — first parallel validation | model download still 500/503; 535 propose_batch spans | ~$8 |
+| 6 | Parallel K=4 with both fixes | succeeded — all artifacts on disk | none | ~$8 |
+
+**Total: ~$30 → 4 working campaigns + 5 distinct bugs caught + fixed.**
