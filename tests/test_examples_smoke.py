@@ -1,20 +1,31 @@
-"""End-to-end smoke tests for the in-tree CPU examples.
+"""End-to-end smoke tests for in-tree examples.
 
-Defends against the class of bug that hid the contract path-comparison
-regression for weeks: every unit test passed because the contract
-fixtures used basename-only paths, but every real example
-(workdir-prefixed paths) silently rejected every diff. The campaigns
-ran to max_iter and returned best_value=None — looked fine in logs;
-totally broken in practice.
+Two tiers:
 
-These tests run the actual CLI against the actual example configs and
-assert the loop produces a real best_value (not None). They run with
-no API key — the LLM policies fall back to greedy, which is enough to
-exercise the contract validator and the full keep/discard plumbing.
+Tier 1 — full run (~5-10 s each)
+    Examples that work CPU-only with stub credentials. The LLM policies
+    fall back to greedy/random when CHUTES_API_KEY is invalid. The full
+    keep/discard plumbing runs.
 
-Each example takes ~5-10 s. If you add a new example that uses an LLM
-policy, please add it here — the cost is small and the bug class is
-expensive.
+Tier 2 — validate only (~1 s each)
+    Examples that need GPU (basilica target) or heavy ML deps (datasets,
+    transformers, real model downloads). For these we run
+    `autoresearch-rl validate` which exercises config_validate plus
+    target construction up to but not including the run loop. That's
+    enough to catch:
+      - the contract path-comparison class (validator runs on diff)
+      - config schema regressions
+      - tracked-path overwrite warnings
+      - BasilicaTarget construction failures (e.g., SDK API changes)
+
+Defends against the class of bug surfaced in commit fef66d1: every
+unit test passed because fixtures used basename-only contract paths,
+but every real example silently rejected every diff because actual
+configs use workdir-prefixed paths. The full-run tier asserts
+best_value != None so this cannot regress.
+
+If you add a new example, add it here. The cost is small; the bug
+class is expensive.
 """
 from __future__ import annotations
 
@@ -31,17 +42,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _isolate(example_dir: str, tmp_path: Path) -> tuple[Path, Path]:
-    """Copy an example to tmp_path. Returns (sandbox_root, sandbox_config_path).
-
-    The sandbox uses workdir-relative paths so subprocess(cwd=sandbox_root)
-    produces artifacts inside the sandbox. The repo's example dir is never
-    modified — important because greedy LLM-fallback diffs append text to
-    the trial source.
+    """Copy an example to tmp_path and rewrite workdir-prefixed paths to
+    be relative to the sandbox. Subprocess(cwd=sandbox_root) then keeps
+    the repo's tree clean — important because greedy LLM-fallback diffs
+    append text to the trial source.
     """
     src = REPO_ROOT / example_dir
     dst_dir = tmp_path / "example"
     shutil.copytree(src, dst_dir)
-    # The shipped config uses workdir 'examples/<name>'. Rewrite to '.'.
     cfg_text = (dst_dir / "config.yaml").read_text()
     cfg_text = cfg_text.replace(f"workdir: {example_dir}", "workdir: .")
     cfg_text = cfg_text.replace(f"{example_dir}/", "")
@@ -53,62 +61,112 @@ def _isolate(example_dir: str, tmp_path: Path) -> tuple[Path, Path]:
     return dst_dir, dst_dir / "config.yaml"
 
 
-def _run_example(
-    sandbox_root: Path, config_path: Path, *, max_iter: int = 2,
-    extra_env: dict | None = None,
-) -> dict:
-    """Run autoresearch-rl from sandbox_root; return parsed JSON output."""
-    cmd_env = dict(os.environ)  # inherit caller env (incl. monkeypatch'd keys)
+def _cli(
+    sandbox_root: Path, *cli_args: str,
+    extra_env: dict | None = None, timeout: int = 120,
+) -> subprocess.CompletedProcess:
+    cmd_env = dict(os.environ)
     cmd_env["PYTHONPATH"] = str(REPO_ROOT / "src")
     if extra_env:
         cmd_env.update(extra_env)
-    cp = subprocess.run(
-        [
-            sys.executable, "-m", "autoresearch_rl.cli", "run",
-            str(config_path),
-            "--override", f"controller.max_iterations={max_iter}",
-        ],
+    return subprocess.run(
+        [sys.executable, "-m", "autoresearch_rl.cli", *cli_args],
         cwd=str(sandbox_root),
-        capture_output=True, text=True, timeout=120, env=cmd_env,
+        capture_output=True, text=True, timeout=timeout, env=cmd_env,
     )
-    if cp.returncode != 0:
-        pytest.fail(
-            f"example {config_path} exited non-zero ({cp.returncode}):\n"
-            f"--- stdout (last 30 lines) ---\n{chr(10).join(cp.stdout.splitlines()[-30:])}\n"
-            f"--- stderr (last 30 lines) ---\n{chr(10).join(cp.stderr.splitlines()[-30:])}"
-        )
-    text = cp.stdout
-    start = text.rfind("{")
-    end = text.rfind("}")
-    assert start >= 0 and end > start, f"no JSON in stdout:\n{text[-500:]}"
-    return json.loads(text[start : end + 1])
 
 
-@pytest.mark.parametrize("example_dir", [
+def _parse_run_json(stdout: str) -> dict:
+    start = stdout.rfind("{")
+    end = stdout.rfind("}")
+    assert start >= 0 and end > start, f"no JSON in stdout:\n{stdout[-500:]}"
+    return json.loads(stdout[start : end + 1])
+
+
+# ---------------------------------------------------------------- Tier 1: full run
+
+
+# (example_dir, runs_to_completion_in_ci_with_stub_credentials)
+TIER1_FULL_RUN = [
     "examples/minimal-trainable-target",
-])
+    "examples/autoresearch-like",
+]
+
+
+@pytest.mark.parametrize("example_dir", TIER1_FULL_RUN)
 def test_llm_diff_example_produces_real_best_value(
     example_dir: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
-    """Real CLI run of an llm_diff example must return best_value != None.
+    """Real CLI run must return best_value != None.
 
-    The bug this defends against (commit fef66d1): every llm_diff example
-    silently produced best_value=None because the contract validator
-    rejected every basename-vs-prefix diff with out_of_scope_mutation_blocked.
-    Fixing the contract was the immediate fix; this test ensures the same
-    class of regression cannot land again without CI noticing.
+    Defends against commit fef66d1: the contract validator silently
+    rejected every diff with out_of_scope_mutation_blocked, every
+    campaign returned best_value=None.
+
+    Uses a stub API key so LLMDiffPolicy attempts the call and falls
+    back to greedy on auth failure — that path exercises the contract
+    validator + diff-apply + run-trial chain end-to-end.
     """
-    # Fake API key so LLMDiffPolicy attempts the call (then falls back to
-    # greedy on auth failure). Without ANY key the policy short-circuits to
-    # random fallback; with a stub key it goes through the full chat-API
-    # error path which is more representative.
     monkeypatch.setenv("CHUTES_API_KEY", "stub")
 
     sandbox_root, config_path = _isolate(example_dir, tmp_path)
-    result = _run_example(sandbox_root, config_path, max_iter=2)
-
+    cp = _cli(
+        sandbox_root, "run", str(config_path),
+        "--override", "controller.max_iterations=2",
+    )
+    if cp.returncode != 0:
+        pytest.fail(
+            f"{example_dir} exited non-zero ({cp.returncode}):\n"
+            f"--- stdout ---\n{cp.stdout[-1500:]}\n"
+            f"--- stderr ---\n{cp.stderr[-1500:]}"
+        )
+    result = _parse_run_json(cp.stdout)
     assert result["iterations"] == 2, result
     assert result["best_value"] is not None, (
-        f"best_value is None — the contract validator may be silently "
-        f"rejecting all diffs again. Result: {result}"
+        f"{example_dir} returned best_value=None — the contract validator "
+        f"may be silently rejecting all diffs again. Result: {result}"
     )
+
+
+# ---------------------------------------------------------------- Tier 2: validate only
+
+
+# Examples that need real GPU / heavy ML deps to actually run, but whose
+# config + target-construction path we can still smoke-test via 'validate'.
+TIER2_VALIDATE_ONLY = [
+    "examples/basilica-grpo",
+    "examples/security-judge",
+    "examples/deberta-prompt-injection",
+]
+
+
+@pytest.mark.parametrize("example_dir", TIER2_VALIDATE_ONLY)
+def test_example_validates_cleanly_with_stub_credentials(
+    example_dir: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """`autoresearch-rl validate` exits 0 with stub credentials.
+
+    Catches: config schema regressions, target-construction failures
+    (e.g., basilica-sdk import failures, BasilicaConfig validator
+    issues), and any new blocking ValidationError that lands in
+    config_validate. Doesn't run the loop — that needs a real GPU /
+    real LLM / real datasets that aren't appropriate for CI.
+
+    Stub credentials are sufficient because config_validate only checks
+    env-var presence, not validity. Real auth happens at run-time.
+    """
+    monkeypatch.setenv("CHUTES_API_KEY", "stub")
+    monkeypatch.setenv("BASILICA_API_KEY", "stub")
+
+    sandbox_root, config_path = _isolate(example_dir, tmp_path)
+    cp = _cli(sandbox_root, "validate", str(config_path), timeout=30)
+
+    # Validate exits 0 on success, 2 on blocking error. We tolerate
+    # warnings (severity=warn) — those are advisory and shouldn't fail
+    # the smoke. But ANY blocking error is a real regression.
+    assert cp.returncode == 0, (
+        f"{example_dir} validate failed ({cp.returncode}):\n"
+        f"--- stdout ---\n{cp.stdout}\n--- stderr ---\n{cp.stderr}"
+    )
+    # The CLI prints "OK" on success.
+    assert "OK" in cp.stdout, f"validate exited 0 but no 'OK' marker:\n{cp.stdout}"

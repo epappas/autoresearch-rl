@@ -32,6 +32,10 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.6",
   "mypy>=1.10",
+  # basilica-sdk is needed to smoke-test basilica-target example configs
+  # (build_target imports it). Runtime users who don't run basilica
+  # campaigns can keep the lighter [basilica] extra instead.
+  "basilica-sdk>=0.20",
 ]
 
 [tool.setuptools]

@@ -72,3 +72,39 @@ Shared by both loops:
 - **Comparability enforcement**: runs record hardware fingerprint + budget mode; strict mode rejects budget mismatches
 - **Objective direction**: `direction: min` or `max` in config; internally normalized via `_score()` so lower is always better
 - Ruff line length: 100
+
+## Hard rule for agents working in this repo
+
+**Do not call a feature "done" without a realistic-config end-to-end
+run on the same day you wrote it.**
+
+This rule exists because of a real pattern: agents (including past
+sessions) shipped work that passed unit tests but broke under realistic
+configs. The contract path-comparison bug (commit `fef66d1`) is the
+clearest example — every test fixture used `mutable_file="train.py"`
+while every real example uses `mutable_file="examples/foo/train.py"`,
+so the basename-vs-prefix mismatch silently rejected every diff for
+weeks. Unit tests, ruff, and mypy were all green throughout.
+
+What "realistic-config end-to-end run" means concretely:
+
+- **Configuration changes**: run `make validate CONFIG=examples/<name>/config.yaml`
+  on at least one real example whose shape matches the change.
+- **Engine / contract / executor changes**: run `make smoke` (~30 s).
+- **LLM-policy changes**: run `make real-llm` if you have
+  `MOONSHOT_API_KEY` set; otherwise verify `tests/eval/test_prompt_eval.py`
+  still asserts the structural property you changed.
+- **Parallel / cancellation changes**: run `make showcase` and confirm
+  `best_value != null` and a non-empty cancellation set.
+- **Adding a new example**: add it to
+  `tests/test_examples_smoke.py` in the appropriate tier. Skipping this
+  is how the contract bug stayed hidden — there was no end-to-end
+  example test in CI to catch it.
+
+Before declaring work complete in chat, attach the evidence: which
+command was run, which artifact was produced, what the assertion was.
+"Tests pass / lint clean / mypy clean" is **not** evidence that a
+feature works. It is evidence that the failures you happened to write
+tests for are absent.
+
+See `CONTRIBUTING.md` for the per-area pre-merge checklist.
