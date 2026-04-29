@@ -49,6 +49,7 @@ def validate_runtime(cfg: RunConfig) -> list[ValidationError]:
     errors.extend(_check_model_output_dir(cfg))
     errors.extend(_check_budget_alignment(cfg))
     errors.extend(_check_required_calls_for_cancel(cfg))
+    errors.extend(_check_telemetry_paths_not_overwriting_tracked(cfg))
     return errors
 
 
@@ -264,6 +265,77 @@ def _find_trial_source(cfg: RunConfig) -> Path | None:
                 if cand.is_file():
                     return cand
     return None
+
+
+def _check_telemetry_paths_not_overwriting_tracked(
+    cfg: RunConfig,
+) -> list[ValidationError]:
+    """Warn if a telemetry sink would overwrite git-tracked content.
+
+    Real motivating bug: examples/basilica-grpo/config.yaml writes to
+    artifacts/basilica-grpo/results.tsv, which is committed paper-report
+    data in some user trees. A naive re-run silently overwrote that
+    research output. This check surfaces the collision before any iter
+    runs so the operator can choose: redirect, accept the overwrite, or
+    git-stash the existing data.
+
+    Severity is `warn` (not error): the user may be intentionally
+    appending to or replacing tracked data, and we should not block a
+    legitimate resume. Errors would force a clunky --override on every
+    run of an example.
+    """
+    out: list[ValidationError] = []
+    for field, path_value in (
+        ("telemetry.ledger_path", cfg.telemetry.ledger_path),
+        ("telemetry.trace_path", cfg.telemetry.trace_path),
+        ("telemetry.artifacts_dir", cfg.telemetry.artifacts_dir),
+        ("telemetry.versions_dir", cfg.telemetry.versions_dir),
+        ("telemetry.model_output_dir", cfg.telemetry.model_output_dir),
+    ):
+        if not path_value:
+            continue
+        if _is_git_tracked(path_value):
+            out.append(ValidationError(
+                severity="warn",
+                code="telemetry_overwrites_tracked",
+                field=field,
+                message=(
+                    f"{path_value} is git-tracked; running this campaign "
+                    "may overwrite committed data. Redirect via "
+                    f"--override {field}=<other> or stash the existing "
+                    "file before re-running."
+                ),
+            ))
+    return out
+
+
+def _is_git_tracked(path: str) -> bool:
+    """True if `path` (or any file underneath it) is tracked by git.
+
+    Best-effort: uses subprocess to ask `git ls-files`. Returns False if
+    git isn't available or the path is outside a repo — in those cases
+    the overwrite-protection guarantee doesn't apply but we don't fail
+    validation either.
+    """
+    import subprocess
+    try:
+        cp = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", path],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        if cp.returncode == 0 and cp.stdout.strip():
+            return True
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return False
+    # If the path is a directory, ls-files returns the contained files.
+    try:
+        cp = subprocess.run(
+            ["git", "ls-files", "--", path],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        return cp.returncode == 0 and bool(cp.stdout.strip())
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _has_emit_progress_call(src: str) -> bool:

@@ -223,6 +223,46 @@ def test_cancel_warns_when_source_unknown() -> None:
     assert all(e.severity == "warn" for e in warns)
 
 
+def test_warns_when_ledger_path_is_git_tracked() -> None:
+    """Real motivating case: examples/basilica-grpo writes to a tracked path."""
+    repo_root = Path(__file__).resolve().parents[1]
+    tracked_ledger = repo_root / "artifacts" / "basilica-grpo" / "results.tsv"
+    if not tracked_ledger.exists():
+        # Paper-report fixture not present in this checkout; skip rather
+        # than fail. The check still runs in repos where it matters.
+        import pytest
+        pytest.skip("paper-report fixture not in this checkout")
+
+    cfg = _base_cfg(
+        telemetry=TelemetryConfig(
+            ledger_path=str(tracked_ledger),
+            trace_path=str(repo_root / "traces" / "events.jsonl"),
+            artifacts_dir=str(repo_root / "artifacts" / "runs"),
+            versions_dir=str(repo_root / "artifacts" / "versions"),
+        ),
+    )
+    errs = validate_runtime(cfg)
+    matches = _by_code(errs, "telemetry_overwrites_tracked")
+    assert matches, errs
+    # Severity must be warn (not error) — user may be resuming intentionally.
+    assert all(e.severity == "warn" for e in matches)
+    assert any("telemetry.ledger_path" in e.field for e in matches)
+
+
+def test_no_warning_when_ledger_path_is_not_tracked(tmp_path: Path) -> None:
+    """A fresh tmp_path is never tracked → no warning."""
+    cfg = _base_cfg(
+        telemetry=TelemetryConfig(
+            ledger_path=str(tmp_path / "results.tsv"),
+            trace_path=str(tmp_path / "events.jsonl"),
+            artifacts_dir=str(tmp_path / "runs"),
+            versions_dir=str(tmp_path / "versions"),
+        ),
+    )
+    errs = validate_runtime(cfg)
+    assert not _by_code(errs, "telemetry_overwrites_tracked"), errs
+
+
 def test_validation_error_format_includes_severity_and_code() -> None:
     err = ValidationError(severity="error", code="missing_file",
                           message="not found", field="policy.mutable_file")
