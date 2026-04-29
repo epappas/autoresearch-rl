@@ -102,17 +102,30 @@ def test_parallel_runs_faster_than_serial(tmp_path: Path) -> None:
 
 
 def test_rewards_arrive_in_submission_order(tmp_path: Path) -> None:
-    """Even when futures complete out of order, record_reward sees ascending iter."""
-    space = {"lr": [1e-5, 1e-4, 1e-3, 1e-2]}
+    """Even when futures complete out of order, record_reward sees ascending iter.
 
+    Note on the indexing: the fake executor MUST key sleep/loss by the
+    iter_idx parsed from run_dir (e.g. 'run-0001' -> 1), not by a thread
+    arrival counter. Otherwise the test is racy under load — whichever
+    thread enters .execute() first gets idx=0 regardless of which iter
+    it actually is, and the submission-order contract becomes
+    untestable. (Earlier flake observed 2x in CI was caused by exactly
+    this.)
+    """
+    import re
+
+    space = {"lr": [1e-5, 1e-4, 1e-3, 1e-2]}
     # Sleep durations chosen so iter 1 finishes before iter 0.
     sleeps = {0: 0.40, 1: 0.05, 2: 0.30, 3: 0.10}
-    call_count = [0]
+
+    def _parse_iter(run_dir: str) -> int:
+        m = re.search(r"run-(\d+)", run_dir)
+        assert m, f"unexpected run_dir shape: {run_dir!r}"
+        return int(m.group(1))
 
     class _OrderedExec:
         def execute(self, proposal: ParamProposal, run_dir: str) -> Outcome:
-            idx = call_count[0]
-            call_count[0] += 1
+            idx = _parse_iter(run_dir)  # deterministic by iter, not by thread arrival
             sleep_s = sleeps[idx]
             time.sleep(sleep_s)
             # All trials get distinct losses so each is a "keep" if processed in
