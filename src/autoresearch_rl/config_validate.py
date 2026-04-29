@@ -98,12 +98,20 @@ def _check_basilica_target(cfg: RunConfig) -> list[ValidationError]:
     if cfg.target.type != "basilica":
         return []
     out: list[ValidationError] = []
-    if not os.environ.get("BASILICA_API_KEY"):
+    # The basilica-sdk reads BASILICA_API_TOKEN (verified in
+    # basilica/__init__.py). Earlier the validator checked the wrong
+    # name; that was a real bug surfaced when running a real campaign.
+    # Accept either spelling so users with legacy .env files still pass.
+    if not (os.environ.get("BASILICA_API_TOKEN") or os.environ.get("BASILICA_API_KEY")):
         out.append(ValidationError(
             severity="error",
             code="missing_env",
-            field="env.BASILICA_API_KEY",
-            message="BASILICA_API_KEY is not set; basilica target requires it",
+            field="env.BASILICA_API_TOKEN",
+            message=(
+                "BASILICA_API_TOKEN is not set; basilica target requires it "
+                "(the SDK reads BASILICA_API_TOKEN — BASILICA_API_KEY also "
+                "accepted as a back-compat alias)"
+            ),
         ))
     if not cfg.target.basilica.gpu_models:
         out.append(ValidationError(

@@ -156,7 +156,7 @@ def test_example_validates_cleanly_with_stub_credentials(
     env-var presence, not validity. Real auth happens at run-time.
     """
     monkeypatch.setenv("CHUTES_API_KEY", "stub")
-    monkeypatch.setenv("BASILICA_API_KEY", "stub")
+    monkeypatch.setenv("BASILICA_API_TOKEN", "stub")
 
     sandbox_root, config_path = _isolate(example_dir, tmp_path)
     cp = _cli(sandbox_root, "validate", str(config_path), timeout=30)

@@ -91,7 +91,7 @@ def test_existing_files_pass(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_basilica_without_api_key_blocks(monkeypatch) -> None:
-    monkeypatch.delenv("BASILICA_API_KEY", raising=False)
+    monkeypatch.delenv("BASILICA_API_TOKEN", raising=False)
     cfg = _base_cfg(target=TargetConfig(type="basilica", train_cmd=["python3", "train.py"]))
     errs = validate_runtime(cfg)
     assert _by_code(errs, "missing_env"), errs
@@ -99,15 +99,15 @@ def test_basilica_without_api_key_blocks(monkeypatch) -> None:
 
 
 def test_basilica_with_api_key_passes(monkeypatch) -> None:
-    monkeypatch.setenv("BASILICA_API_KEY", "stub")
+    monkeypatch.setenv("BASILICA_API_TOKEN", "stub")
     cfg = _base_cfg(target=TargetConfig(type="basilica", train_cmd=["python3", "train.py"]))
     errs = validate_runtime(cfg)
-    api_errs = [e for e in errs if e.field == "env.BASILICA_API_KEY"]
+    api_errs = [e for e in errs if e.field == "env.BASILICA_API_TOKEN"]
     assert not api_errs
 
 
 def test_basilica_empty_gpu_models_blocks(monkeypatch) -> None:
-    monkeypatch.setenv("BASILICA_API_KEY", "stub")
+    monkeypatch.setenv("BASILICA_API_TOKEN", "stub")
     cfg = _base_cfg(target=TargetConfig(
         type="basilica", train_cmd=["python3", "train.py"],
         basilica=BasilicaConfig(gpu_models=[]),
