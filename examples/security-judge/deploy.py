@@ -37,7 +37,10 @@ def _build_setup_cmd() -> str:
     file_inject = _build_file_injection_cmd()
     pip_install = (
         "pip install --no-cache-dir "
-        "transformers==4.47.1 datasets==3.2.0 accelerate==0.34.2 peft==0.13.2 scipy"
+        "transformers==4.47.1 datasets==3.2.0 accelerate==0.34.2 peft==0.13.2 scipy "
+        # hf_transfer required by newer pytorch images (HF_HUB_ENABLE_HF_TRANSFER=1
+        # is now baked in upstream). Without it, AutoModel.from_pretrained fails.
+        "hf_transfer"
     )
     model_cache = (
         "python3 -c \""
