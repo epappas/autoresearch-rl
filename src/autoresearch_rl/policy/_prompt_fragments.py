@@ -5,6 +5,10 @@ and HybridPolicy. Update here, every policy reads it on the next call.
 """
 from __future__ import annotations
 
+import os
+
+DISABLE_PROGRESS_SERIES_ENV = "AR_DISABLE_PROGRESS_SERIES"
+
 PROGRESS_PROTOCOL_RULES = (
     "PROGRESS PROTOCOL\n"
     "The training script SHOULD call:\n"
@@ -56,7 +60,13 @@ def render_progress_series(history: list[dict], metric: str, max_iters: int = 5)
 
     Each iter that carries `progress_series` (list of {step, value}) gets a
     short row showing first/middle/last values. Empty when no series present.
+
+    Returns "" unconditionally when AR_DISABLE_PROGRESS_SERIES is set in the
+    environment (used by Phase A.3 ablation to compare LLM proposals with
+    and without trajectory context; production runs leave it unset).
     """
+    if os.environ.get(DISABLE_PROGRESS_SERIES_ENV):
+        return ""
     rows: list[str] = []
     iters_with_series = [h for h in history if h.get("progress_series")]
     for entry in iters_with_series[-max_iters:]:
