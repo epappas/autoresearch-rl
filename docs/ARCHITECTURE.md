@@ -13,7 +13,7 @@ All configuration is validated by Pydantic models in `config.py` and assembled i
 |---|---|
 | `ObjectiveConfig` | `metric` name + `direction` (min/max) |
 | `TargetConfig` | target `type` (command/http/basilica), `train_cmd`, `eval_cmd`, `url`, `timeout_s`, `basilica` sub-config |
-| `BasilicaConfig` | GPU cloud settings: image, gpu_count, gpu_models, memory, cpu, storage, ttl_seconds, setup_cmd |
+| `BasilicaConfig` | GPU cloud settings: image, gpu_count, gpu_models, memory, cpu, storage, ttl_seconds, setup_cmd, `ready_timeout_s` (default 600 — bump for parallel-mode setup contention), `post_trial_sleep_s` (default 90 — bootstrap stays alive this long after trial exits so the controller can pull model files before container shutdown) |
 | `PolicyConfig` | `type` (grid/random/static/learned/llm/llm_diff/hybrid) + param space + LLM fields + `mutable_file` / `frozen_file` / `program_file` for diff modes + `required_calls` (default `["emit_progress"]`) for the diff guardrail + hybrid stall thresholds |
 | `ControllerConfig` | `seed`, `max_wall_time_s`, `no_improve_limit`, `failure_rate_limit`, `failure_window`, `checkpoint_path`, plus sub-configs `intra_iteration_cancel` (Phase 2) and `parallel` (Phase 4) |
 | `IntraIterationCancelConfig` | `enabled`, `min_steps`, `poll_interval_s`, `min_reports_before_decide` — controls cooperative cancellation |

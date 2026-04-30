@@ -6,20 +6,133 @@ research codebase, not a published library.
 
 ## [unreleased]
 
-### Added
+(Future work goes here.)
 
-- **`examples/parallel-cancel-showcase/`** — end-to-end CPU-only demo
-  exercising Phase 1+2+3+4+6+7.5 in one ~13 s run. Synthetic loss
-  landscape with a known optimum at `lr=3e-3, batch=32`. Shows the
-  IntraIterationGuard cancelling 10 of 16 trials with reason
-  `forecast_above_best`. (`ef1e99b`)
+## [2026-04-30] — Real Basilica validation campaign closed
+
+The 6-probe security-judge campaign against real A100 GPUs closed every
+"untested against Basilica" caveat from the prior arc. Found and fixed
+5 distinct bugs that would have bitten longer-running campaigns. Total
+spend: ~$30 of A100 time → 4 working campaigns + 5 fixes.
+
+### Fixed
+
+- **`fix(security-judge): add hf_transfer to setup_cmd`** (`0ae528f`):
+  upstream pytorch image now bakes in `HF_HUB_ENABLE_HF_TRANSFER=1`,
+  which requires the `hf_transfer` package. Surfaced by probe 1.
+- **`fix(security-judge): hf_transfer in deploy.py canonical setup_cmd`**
+  (`cfaa7bf`): `deploy.py` is the canonical entry; its derived
+  `setup_cmd` overrides the config's. Probe 2 hit
+  `python3 /app/prepare.py: No such file` because direct
+  `autoresearch-rl run` skipped the file-injection step. Both
+  setup_cmds now include `hf_transfer` (defense in depth).
+- **`fix(basilica): per-run-dir run/eval cache (race fix)`**
+  (`297efa5`): `BasilicaTarget._last_train_outcome` was a single
+  shared attribute. Under parallel mode, Thread A's `eval()` could
+  return Thread B's training outcome, silently corrupting kept-best
+  attribution. Fix: per-run_dir dict + lock. Caught by code-reading
+  before the first parallel-mode probe ran.
+- **`fix(basilica): make ready_timeout_s configurable`** (`055e894`):
+  `_wait_and_collect` had a hardcoded `min(timeout, 600)` cap on the
+  readiness phase, ignoring `target.timeout_s`. Probe 4 (K=4 parallel)
+  hit it — all 4 trials timed out at exactly 609s. New
+  `basilica.ready_timeout_s: int = 600` config field.
+- **`fix(basilica+parallel): two real bugs surfaced by probe5`**
+  (`ec680ba`):
+  - **`propose_batch` fired ~535 times for a 4-iter campaign** — the
+    submit loop fired propose every poll-tick whenever `slots_open>0`,
+    even after `max_iterations` was already covered by in_flight +
+    completed. Free for `RandomPolicy`; ruinous for `LLMParamPolicy`
+    parallel mode. Fix: clamp by remaining-iterations-needed.
+  - **Bootstrap server killed itself 15s after trial exit**, racing
+    the controller's model download. Probes 3 and 5 both hit HTTP
+    500/503 on `_download_model` because the container shut down
+    before the controller's next 5-20s poll could even notice metrics
+    were ready. Fix: bootstrap sleep `15s → 90s` (default),
+    configurable via `basilica.post_trial_sleep_s`.
+- **`fix(config_validate): accept BASILICA_API_TOKEN`** (`55b2570`):
+  the basilica-sdk reads `BASILICA_API_TOKEN`, not `BASILICA_API_KEY`.
+  The validator had been checking the wrong name; users with correct
+  `.env` files were getting "missing key" errors. Now accepts either
+  (TOKEN preferred, KEY accepted as back-compat alias).
 
 ### Changed
 
-- `docs/ARCHITECTURE.md` rewritten to reflect Phase 1–4 modules,
-  cooperative cancellation lifecycle, and Phase 7 LLM-prompt fragments.
-  Adds an "Adoption history" section pointing at the seven research
-  docs under `docs/research/`. (`e92c429`)
+- `docs/research/RLix-Adoption-Outcomes.md`: capability claims now
+  carry validation tier per item (unit / smoke / real LLM / real
+  Basilica). The "What we did NOT gain" section restructured into
+  "Closed during the campaign" (5 items + commit refs) and
+  "Remaining" (cooperative cancel against Basilica still untested).
+  Probability assessment for full 8-hour campaign updated:
+  ~80% → ~95% completion, ~50% → ~95% getting LoRA weights, +85%
+  for K=4 parallel campaigns. New per-probe campaign log table.
+- `docs/research/velocity.md`: new row for the 6-probe arc.
+
+### Real evidence shipped
+
+- **Sequential** (probe 3, single A100): eval_score=0.640909,
+  decision_accuracy=0.772727, json_compliance=0.972727.
+- **Parallel K=4** (probe 6, 4× A100): eval_score=[0.41, 0.11, 0.55,
+  0.62], 4 LoRA adapters (17–20 MB each) downloaded to local disk
+  and usable for downstream `peft.PeftModel.from_pretrained`.
+
+## [2026-04-29] — End-to-end smoke + trust artifacts
+
+Surfaced and fixed the most lurking bug of the prior arc, then built
+defense against the class.
+
+### Fixed
+
+- **`fix(contract): basename comparison so workdir-prefixed
+  mutable_file works`** (`fef66d1`): every `llm_diff` and `hybrid`
+  example had been silently rejecting every diff because
+  `validate_diff_against_contract` compared workdir-prefixed
+  `policy.mutable_file` against basename-only diff paths. Each
+  campaign returned `best_value: null`. Most lurking bug of the
+  entire arc — only end-to-end runs surfaced it. Fix: basename
+  normalization on both sides. +2 regression tests.
+- **`fix(llm): allow per-call temperature + bump default to 1.0
+  for Kimi compat`** (`f4b8d5a`): Kimi K2.6 rejects `temperature !=
+  1.0` with HTTP 400. Earlier `temperature=0.7` was hard-coded;
+  diff test "passed" only because LLMDiffPolicy fell back to greedy
+  on API error. Per-call kwarg now configurable. Also captures
+  HTTPError body into the timeline span as `args.error_body`.
+- **`fix(basilica): hash-based de-dup for cancel control uploads`**
+  (`8b27f9b`): `_propagate_control` cached uploads by `len(data)`;
+  a payload edit at the same byte length was silently dropped. Now
+  caches by SHA-256 of the body.
+
+### Added
+
+- **`tests/test_examples_smoke.py`**: end-to-end runs all 6 in-tree
+  examples through either a 2-iter loop (Tier 1: minimal-trainable-
+  target, autoresearch-like) or `validate` (Tier 2: basilica-grpo,
+  security-judge, deberta-prompt-injection). Asserts `best_value !=
+  None` on Tier 1 — defense against the contract-bug class.
+- **`tests/eval/test_real_llm.py`**: 3 behavioral assertions against
+  real Kimi K2.6 calls — emit_progress preservation in real diffs,
+  cancellation context changes proposed values, batch returns
+  distinct LRs. Gated on `MOONSHOT_API_KEY` env var.
+- **`tests/test_showcase_determinism.py`**: two-tier determinism
+  contract (strict no-cancel / weaker with-cancel) for the
+  parallel-cancel-showcase.
+- **`config_validate._check_telemetry_paths_not_overwriting_tracked`**:
+  warns when `telemetry.{ledger,trace,artifacts,versions,model_output}_path`
+  resolves to git-tracked content. Severity=warn so legitimate resume
+  isn't blocked. Caught the case where `examples/security-judge` would
+  silently overwrite the user's tracked paper data.
+- **`Makefile`** with `make help / check / test-fast / smoke /
+  showcase / showcase-chart / validate / real-llm`.
+- **`pyproject.toml`** new optional extras: `[chart]` (matplotlib
+  for `scripts/progress_chart.py`), and `basilica-sdk` added to
+  `[dev]` so CI can construct `BasilicaTarget` for the validate
+  path.
+- **`scripts/progress_chart.py`** distinguishes cancelled trials with
+  amber rings (was lumping them with discarded gray).
+- **`CONTRIBUTING.md`** + hard rule in `CLAUDE.md`: do not call a
+  feature done without a realistic-config end-to-end run.
+- **`examples/parallel-cancel-showcase/`** (`ef1e99b`): end-to-end
+  CPU-only demo exercising Phase 1+2+3+4+6+7.5 in ~13s.
 
 ## [2026-04-28] — RLix-adoption arc complete
 
