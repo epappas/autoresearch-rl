@@ -1,0 +1,22 @@
+{
+  "iter": 2,
+  "metrics": {
+    "rank": 8.0,
+    "eval_score": 0.521818,
+    "decision_accuracy": 0.209091,
+    "json_compliance": 0.963636,
+    "loss": 0.001292,
+    "training_seconds": 79.8
+  },
+  "params": {
+    "learning_rate": 5e-05,
+    "max_steps": 30,
+    "num_generations": 2,
+    "temperature": 0.9,
+    "lora_rank": 8,
+    "AR_MODEL_DIR": "/data/models/repro-2026-04/v0002"
+  },
+  "status": "ok",
+  "run_dir": "artifacts/repro-2026-04/runs/run-0002",
+  "model_dir": "artifacts/repro-2026-04/runs/run-0002/model"
+}

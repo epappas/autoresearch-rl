@@ -1,0 +1,5 @@
+commit	metric_name	metric_value	memory_gb	status	description	episode_id	iter	score	budget_mode	budget_s	hardware_fingerprint	comparable	non_comparable_reason
+702f43d	eval_score	0.423636	0.0	keep	continuous-parallel|conc=4	40b8d50b1730	0	-0.423636	fixed_wallclock	3600	83ead5833612ae3e	0	budget_mismatch:3600!=28800
+702f43d	eval_score	0.000000	0.0	discard	continuous-parallel|conc=4	40b8d50b1730	1	-0.423636	fixed_wallclock	3600	83ead5833612ae3e	0	budget_mismatch:3600!=28800
+702f43d	eval_score	0.521818	0.0	keep	continuous-parallel|conc=4	40b8d50b1730	2	-0.521818	fixed_wallclock	3600	83ead5833612ae3e	0	budget_mismatch:3600!=28800
+702f43d	eval_score	0.515455	0.0	discard	continuous-parallel|conc=4	40b8d50b1730	3	-0.521818	fixed_wallclock	3600	83ead5833612ae3e	0	budget_mismatch:3600!=28800
