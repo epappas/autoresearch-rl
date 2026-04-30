@@ -31,13 +31,13 @@ from typing import Any
 
 import numpy as np
 
-DATA_DIR = Path("docs/research/data/ablation-2026-04")
+DEFAULT_DATA_DIR = Path("docs/research/data/ablation-2026-04")
 THRESHOLD = 0.5  # eval_score > THRESHOLD counts as "good"
 
 
-def parse_cell(arm: str, seed: int) -> dict[str, Any] | None:
+def parse_cell(arm: str, seed: int, data_dir: Path) -> dict[str, Any] | None:
     """Parse one (arm, seed) cell. Returns None if results.tsv is missing."""
-    cell_dir = DATA_DIR / "runs" / f"{arm}_seed{seed}"
+    cell_dir = data_dir / f"{arm}_seed{seed}"
     tsv = cell_dir / "results.tsv"
     if not tsv.exists():
         return None
@@ -215,15 +215,21 @@ def run() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3, 4, 5])
     parser.add_argument(
-        "--out", type=str, default=str(DATA_DIR / "summary.json"),
+        "--data-dir", type=Path, default=DEFAULT_DATA_DIR / "runs",
+        help="Directory containing {A,B}_seed{N}/ subdirs with results.tsv",
+    )
+    parser.add_argument(
+        "--out", type=str, default=None,
     )
     args = parser.parse_args()
+
+    out_path = Path(args.out) if args.out else (args.data_dir.parent / "summary.json")
 
     cells_a = []
     cells_b = []
     for s in args.seeds:
-        a = parse_cell("A", s)
-        b = parse_cell("B", s)
+        a = parse_cell("A", s, args.data_dir)
+        b = parse_cell("B", s, args.data_dir)
         if a is None or b is None:
             print(f"WARN: seed {s} missing cell (A={a is not None} B={b is not None})", file=sys.stderr)
             continue
@@ -243,7 +249,7 @@ def run() -> int:
 
     summary: dict[str, Any] = {
         "schema": "ablation-summary-v1",
-        "data_dir": str(DATA_DIR),
+        "data_dir": str(args.data_dir),
         "n_pairs": len(cells_a),
         "seeds": [c["seed"] for c in cells_a],
         "arm_A": {
@@ -280,8 +286,8 @@ def run() -> int:
         "raw_cells": {"A": cells_a, "B": cells_b},
     }
 
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(summary, indent=2))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(summary, indent=2))
 
     # Pretty print for the doc.
     print(f"\nA.3 ablation summary — {summary['n_pairs']} paired runs (seeds {summary['seeds']})\n")
