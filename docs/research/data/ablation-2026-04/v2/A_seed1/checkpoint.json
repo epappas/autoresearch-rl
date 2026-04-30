@@ -1,0 +1,214 @@
+{
+  "episode_id": "583968cfff64",
+  "iteration": 7,
+  "best_score": -0.601636,
+  "best_value": 0.601636,
+  "no_improve_streak": 6,
+  "history": [
+    {
+      "iter": 0,
+      "status": "ok",
+      "decision": "keep",
+      "metrics": {
+        "rank": 4.0,
+        "eval_score": 0.5,
+        "decision_accuracy": 0.209091,
+        "json_compliance": 0.963636,
+        "loss": 0.001269,
+        "training_seconds": 96.5
+      },
+      "params": {
+        "learning_rate": 5e-05,
+        "max_steps": 30,
+        "num_generations": 2,
+        "temperature": 0.7,
+        "lora_rank": 4,
+        "AR_MODEL_DIR": "/data/models/ablation-v2-2026-04/A_seed1/v0000"
+      },
+      "stdout_tail": " to keep returning the legacy format, please set `return_legacy_cache=True`.\n[step 1/30] avg_loss -0.0003, avg_reward 0.6000\n[step 10/30] avg_loss 0.0013, avg_reward 0.4800\n[step 20/30] avg_loss 0.0006, avg_reward 0.5500\n[step 30/30] avg_loss 0.0013, avg_reward 0.5733\nTraining complete.\n[model] saved LoRA adapter to /data/models/ablation-v2-2026-04/A_seed1/v0000\nEvaluating trained model...\neval_score=0.500000\ndecision_accuracy=0.209091\njson_compliance=0.963636\nloss=0.001269\ntraining_seconds=96.5",
+      "stderr_tail": "",
+      "progress_series": null
+    },
+    {
+      "iter": 1,
+      "status": "ok",
+      "decision": "keep",
+      "metrics": {
+        "rank": 16.0,
+        "eval_score": 0.601636,
+        "decision_accuracy": 0.209091,
+        "json_compliance": 0.981818,
+        "loss": 0.019852,
+        "training_seconds": 320.4
+      },
+      "params": {
+        "learning_rate": 0.0003,
+        "max_steps": 80,
+        "num_generations": 3,
+        "temperature": 0.9,
+        "lora_rank": 16,
+        "AR_MODEL_DIR": "/data/models/ablation-v2-2026-04/A_seed1/v0001"
+      },
+      "stdout_tail": "s 0.0214, avg_reward 0.4356\n[step 40/80] avg_loss 0.0204, avg_reward 0.4837\n[step 50/80] avg_loss 0.0200, avg_reward 0.5223\n[step 60/80] avg_loss 0.0196, avg_reward 0.5503\n[step 70/80] avg_loss 0.0205, avg_reward 0.5602\n[step 80/80] avg_loss 0.0199, avg_reward 0.5665\nTraining complete.\n[model] saved LoRA adapter to /data/models/ablation-v2-2026-04/A_seed1/v0001\nEvaluating trained model...\neval_score=0.601636\ndecision_accuracy=0.209091\njson_compliance=0.981818\nloss=0.019852\ntraining_seconds=320.4",
+      "stderr_tail": "",
+      "progress_series": null
+    },
+    {
+      "iter": 2,
+      "status": "ok",
+      "decision": "discard",
+      "metrics": {
+        "rank": 8.0,
+        "eval_score": 0.492727,
+        "decision_accuracy": 0.2,
+        "json_compliance": 0.963636,
+        "loss": 0.001584,
+        "training_seconds": 137.4
+      },
+      "params": {
+        "learning_rate": 0.0001,
+        "max_steps": 50,
+        "num_generations": 2,
+        "temperature": 0.9,
+        "lora_rank": 8,
+        "AR_MODEL_DIR": "/data/models/ablation-v2-2026-04/A_seed1/v0002"
+      },
+      "stdout_tail": " -0.0023, avg_reward 0.6000\n[step 10/50] avg_loss 0.0012, avg_reward 0.6100\n[step 20/50] avg_loss 0.0013, avg_reward 0.6100\n[step 30/50] avg_loss 0.0013, avg_reward 0.6333\n[step 40/50] avg_loss 0.0017, avg_reward 0.6287\n[step 50/50] avg_loss 0.0016, avg_reward 0.6310\nTraining complete.\n[model] saved LoRA adapter to /data/models/ablation-v2-2026-04/A_seed1/v0002\nEvaluating trained model...\neval_score=0.492727\ndecision_accuracy=0.200000\njson_compliance=0.963636\nloss=0.001584\ntraining_seconds=137.4",
+      "stderr_tail": "",
+      "progress_series": null
+    },
+    {
+      "iter": 3,
+      "status": "ok",
+      "decision": "discard",
+      "metrics": {
+        "rank": 4.0,
+        "eval_score": 0.483636,
+        "decision_accuracy": 0.190909,
+        "json_compliance": 0.890909,
+        "loss": 0.009641,
+        "training_seconds": 173.3
+      },
+      "params": {
+        "learning_rate": 0.0003,
+        "max_steps": 30,
+        "num_generations": 3,
+        "temperature": 0.7,
+        "lora_rank": 4,
+        "AR_MODEL_DIR": "/data/models/ablation-v2-2026-04/A_seed1/v0003"
+      },
+      "stdout_tail": " to keep returning the legacy format, please set `return_legacy_cache=True`.\n[step 1/30] avg_loss 0.0019, avg_reward 0.5667\n[step 10/30] avg_loss 0.0073, avg_reward 0.6067\n[step 20/30] avg_loss 0.0078, avg_reward 0.5617\n[step 30/30] avg_loss 0.0096, avg_reward 0.5922\nTraining complete.\n[model] saved LoRA adapter to /data/models/ablation-v2-2026-04/A_seed1/v0003\nEvaluating trained model...\neval_score=0.483636\ndecision_accuracy=0.190909\njson_compliance=0.890909\nloss=0.009641\ntraining_seconds=173.3",
+      "stderr_tail": "",
+      "progress_series": null
+    },
+    {
+      "iter": 4,
+      "status": "ok",
+      "decision": "discard",
+      "metrics": {
+        "rank": 16.0,
+        "eval_score": 0.537273,
+        "decision_accuracy": 0.209091,
+        "json_compliance": 0.990909,
+        "loss": 0.011033,
+        "training_seconds": 246.9
+      },
+      "params": {
+        "learning_rate": 0.0003,
+        "max_steps": 80,
+        "num_generations": 3,
+        "temperature": 0.9,
+        "lora_rank": 16,
+        "AR_MODEL_DIR": "/data/models/ablation-v2-2026-04/A_seed1/v0004"
+      },
+      "stdout_tail": "s 0.0103, avg_reward 0.6722\n[step 40/80] avg_loss 0.0119, avg_reward 0.6567\n[step 50/80] avg_loss 0.0123, avg_reward 0.6527\n[step 60/80] avg_loss 0.0131, avg_reward 0.6572\n[step 70/80] avg_loss 0.0120, avg_reward 0.6305\n[step 80/80] avg_loss 0.0110, avg_reward 0.6233\nTraining complete.\n[model] saved LoRA adapter to /data/models/ablation-v2-2026-04/A_seed1/v0004\nEvaluating trained model...\neval_score=0.537273\ndecision_accuracy=0.209091\njson_compliance=0.990909\nloss=0.011033\ntraining_seconds=246.9",
+      "stderr_tail": "",
+      "progress_series": null
+    },
+    {
+      "iter": 5,
+      "status": "ok",
+      "decision": "discard",
+      "metrics": {
+        "rank": 8.0,
+        "eval_score": 0.530455,
+        "decision_accuracy": 0.2,
+        "json_compliance": 0.954545,
+        "loss": 0.004405,
+        "training_seconds": 68.0
+      },
+      "params": {
+        "learning_rate": 0.0001,
+        "max_steps": 50,
+        "num_generations": 2,
+        "temperature": 0.7,
+        "lora_rank": 8,
+        "AR_MODEL_DIR": "/data/models/ablation-v2-2026-04/A_seed1/v0005"
+      },
+      "stdout_tail": "ss 0.0032, avg_reward 0.6000\n[step 10/50] avg_loss 0.0064, avg_reward 0.5700\n[step 20/50] avg_loss 0.0039, avg_reward 0.6200\n[step 30/50] avg_loss 0.0032, avg_reward 0.6267\n[step 40/50] avg_loss 0.0050, avg_reward 0.6094\n[step 50/50] avg_loss 0.0044, avg_reward 0.6135\nTraining complete.\n[model] saved LoRA adapter to /data/models/ablation-v2-2026-04/A_seed1/v0005\nEvaluating trained model...\neval_score=0.530455\ndecision_accuracy=0.200000\njson_compliance=0.954545\nloss=0.004405\ntraining_seconds=68.0",
+      "stderr_tail": "",
+      "progress_series": null
+    },
+    {
+      "iter": 6,
+      "status": "ok",
+      "decision": "discard",
+      "metrics": {
+        "rank": 16.0,
+        "eval_score": 0.42,
+        "decision_accuracy": 0.209091,
+        "json_compliance": 0.981818,
+        "loss": 0.000884,
+        "training_seconds": 223.3
+      },
+      "params": {
+        "learning_rate": 0.0003,
+        "max_steps": 80,
+        "num_generations": 3,
+        "temperature": 0.9,
+        "lora_rank": 16,
+        "AR_MODEL_DIR": "/data/models/ablation-v2-2026-04/A_seed1/v0006"
+      },
+      "stdout_tail": "s 0.0037, avg_reward 0.7622\n[step 40/80] avg_loss 0.0018, avg_reward 0.7492\n[step 50/80] avg_loss 0.0014, avg_reward 0.7553\n[step 60/80] avg_loss 0.0012, avg_reward 0.7694\n[step 70/80] avg_loss 0.0010, avg_reward 0.7795\n[step 80/80] avg_loss 0.0009, avg_reward 0.7683\nTraining complete.\n[model] saved LoRA adapter to /data/models/ablation-v2-2026-04/A_seed1/v0006\nEvaluating trained model...\neval_score=0.420000\ndecision_accuracy=0.209091\njson_compliance=0.981818\nloss=0.000884\ntraining_seconds=223.3",
+      "stderr_tail": "",
+      "progress_series": null
+    },
+    {
+      "iter": 7,
+      "status": "ok",
+      "decision": "discard",
+      "metrics": {
+        "rank": 4.0,
+        "eval_score": 0.520909,
+        "decision_accuracy": 0.209091,
+        "json_compliance": 0.972727,
+        "loss": 0.000334,
+        "training_seconds": 151.5
+      },
+      "params": {
+        "learning_rate": 5e-05,
+        "max_steps": 80,
+        "num_generations": 2,
+        "temperature": 0.9,
+        "lora_rank": 4,
+        "AR_MODEL_DIR": "/data/models/ablation-v2-2026-04/A_seed1/v0007"
+      },
+      "stdout_tail": "s 0.0006, avg_reward 0.5667\n[step 40/80] avg_loss 0.0005, avg_reward 0.5812\n[step 50/80] avg_loss 0.0003, avg_reward 0.5990\n[step 60/80] avg_loss 0.0003, avg_reward 0.6125\n[step 70/80] avg_loss 0.0003, avg_reward 0.6236\n[step 80/80] avg_loss 0.0003, avg_reward 0.6200\nTraining complete.\n[model] saved LoRA adapter to /data/models/ablation-v2-2026-04/A_seed1/v0007\nEvaluating trained model...\neval_score=0.520909\ndecision_accuracy=0.209091\njson_compliance=0.972727\nloss=0.000334\ntraining_seconds=151.5",
+      "stderr_tail": "",
+      "progress_series": null
+    }
+  ],
+  "recent_statuses": [
+    "ok",
+    "ok",
+    "ok",
+    "ok",
+    "ok",
+    "ok",
+    "ok",
+    "ok"
+  ],
+  "policy_state": {},
+  "elapsed_s": 1405.5581260612234,
+  "timestamp": 1777577965.1161492
+}

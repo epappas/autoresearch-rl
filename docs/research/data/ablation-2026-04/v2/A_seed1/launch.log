@@ -1,0 +1,45 @@
+[start] A_seed1 at 2026-04-30T21:15:58+02:00 commit=f49b61d03f88711f50a98be38bfd340efbe5fecb
+[WARN] budget_exceeds_wall (comparability.expected_budget_s): expected_budget_s=28800 exceeds controller.max_wall_time_s=5400; runs will be cut short before budget is reached
+LLM API error 429, retry 1/5 in 10s
+LLM API error 429, retry 1/5 in 13s
+LLM API error 429, retry 1/5 in 12s
+LLM API error 429, retry 2/5 in 22s
+LLM API error 429, retry 3/5 in 46s
+LLM API error 429, retry 4/5 in 91s
+LLM API error 503, retry 5/5 in 108s
+LLM API error 503 (no retry): {"detail":"No instances available (yet) for chute_id='0df3133d-c477-56d2-b4db-f2093bb150a1'"}
+LLM policy failed, falling back to random
+Traceback (most recent call last):
+  File "/home/epappas/workspace/spacejar/autoresearch-rl/.claude/worktrees/ar-phase-1/src/autoresearch_rl/policy/llm_search.py", line 396, in propose
+    raw = _call_chat_api_messages(
+        self._api_url, self._model, api_key, messages, self._timeout_s,
+    )
+  File "/home/epappas/workspace/spacejar/autoresearch-rl/.claude/worktrees/ar-phase-1/src/autoresearch_rl/policy/llm_search.py", line 140, in _call_chat_api_messages
+    return _do_request(
+        endpoint, data, api_key, timeout, max_retries, span_cm_args,
+    )
+  File "/home/epappas/workspace/spacejar/autoresearch-rl/.claude/worktrees/ar-phase-1/src/autoresearch_rl/policy/llm_search.py", line 169, in _do_request
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/epappas/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/urllib/request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/home/epappas/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/urllib/request.py", line 495, in open
+    response = meth(req, response)
+  File "/home/epappas/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/urllib/request.py", line 604, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "/home/epappas/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/urllib/request.py", line 533, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/epappas/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/urllib/request.py", line 466, in _call_chain
+    result = func(*args)
+  File "/home/epappas/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/urllib/request.py", line 613, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 503: Service Unavailable
+{
+  "iterations": 8,
+  "best_value": 0.601636,
+  "best_score": -0.601636
+}
+[end] A_seed1 at 2026-04-30T21:39:25+02:00 rc=0

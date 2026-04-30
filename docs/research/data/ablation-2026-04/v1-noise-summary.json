@@ -1,0 +1,306 @@
+{
+  "schema": "ablation-summary-v1",
+  "data_dir": "docs/research/data/ablation-2026-04/runs",
+  "n_pairs": 3,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "arm_A": {
+    "label": "with progress_series in LLM prompt",
+    "best_per_seed": [
+      0.525455,
+      0.527273,
+      0.543636
+    ],
+    "mean_best": 0.5321213333333333,
+    "median_best": 0.527273,
+    "std_best": 0.010013338221259355,
+    "n_successful_trials_per_seed": [
+      4,
+      4,
+      4
+    ],
+    "mean_successful_trials": 4.0,
+    "first_above_threshold": [
+      0,
+      0,
+      0
+    ],
+    "wall_seconds_per_seed": [
+      1040,
+      303,
+      858
+    ]
+  },
+  "arm_B": {
+    "label": "without progress_series in LLM prompt (AR_DISABLE_PROGRESS_SERIES=1)",
+    "best_per_seed": [
+      0.571818,
+      0.547273,
+      0.565909
+    ],
+    "mean_best": 0.5616666666666666,
+    "median_best": 0.565909,
+    "std_best": 0.012810632315905943,
+    "n_successful_trials_per_seed": [
+      4,
+      4,
+      4
+    ],
+    "mean_successful_trials": 4.0,
+    "first_above_threshold": [
+      0,
+      0,
+      0
+    ],
+    "wall_seconds_per_seed": [
+      479,
+      607,
+      655
+    ]
+  },
+  "paired_difference": {
+    "diff_per_seed": [
+      -0.04636300000000004,
+      -0.020000000000000018,
+      -0.022272999999999987
+    ],
+    "mean_diff": -0.02954533333333335,
+    "median_diff": -0.022272999999999987,
+    "std_diff": 0.014608800988901655,
+    "ci_95_t": [
+      -0.06583853580784797,
+      0.006747869141181275
+    ],
+    "ci_95_bootstrap": [
+      -0.04636300000000004,
+      -0.020000000000000018
+    ],
+    "wilcoxon": {
+      "n": 3,
+      "W_pos": 0.0,
+      "W_neg": 6.0,
+      "W": 0.0,
+      "p_value": 0.25,
+      "p_method": "exact-enumeration"
+    }
+  },
+  "raw_cells": {
+    "A": [
+      {
+        "arm": "A",
+        "seed": 1,
+        "n_rows": 4,
+        "n_successful": 4,
+        "best_eval_score": 0.525455,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 1040,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.520909
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.422727
+          },
+          {
+            "iter": 2,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.525455
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.513182
+          }
+        ]
+      },
+      {
+        "arm": "A",
+        "seed": 2,
+        "n_rows": 4,
+        "n_successful": 4,
+        "best_eval_score": 0.527273,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 303,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.504545
+          },
+          {
+            "iter": 1,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.527273
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.527273
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.42
+          }
+        ]
+      },
+      {
+        "arm": "A",
+        "seed": 3,
+        "n_rows": 4,
+        "n_successful": 4,
+        "best_eval_score": 0.543636,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 858,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.543636
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.409091
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.536818
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.406364
+          }
+        ]
+      }
+    ],
+    "B": [
+      {
+        "arm": "B",
+        "seed": 1,
+        "n_rows": 4,
+        "n_successful": 4,
+        "best_eval_score": 0.571818,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 479,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.52
+          },
+          {
+            "iter": 1,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.571818
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.420909
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.512727
+          }
+        ]
+      },
+      {
+        "arm": "B",
+        "seed": 2,
+        "n_rows": 4,
+        "n_successful": 4,
+        "best_eval_score": 0.547273,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 607,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.547273
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.417273
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.535909
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.512727
+          }
+        ]
+      },
+      {
+        "arm": "B",
+        "seed": 3,
+        "n_rows": 4,
+        "n_successful": 4,
+        "best_eval_score": 0.565909,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 655,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.565909
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.521818
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.282727
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.531818
+          }
+        ]
+      }
+    ]
+  }
+}

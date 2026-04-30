@@ -1,0 +1,706 @@
+{
+  "schema": "ablation-summary-v1",
+  "data_dir": "docs/research/data/ablation-2026-04/v2",
+  "n_pairs": 5,
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "arm_A": {
+    "label": "with progress_series in LLM prompt",
+    "best_per_seed": [
+      0.601636,
+      0.545455,
+      0.552727,
+      0.559273,
+      0.615455
+    ],
+    "mean_best": 0.5749092,
+    "median_best": 0.559273,
+    "std_best": 0.03147369687850474,
+    "n_successful_trials_per_seed": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "mean_successful_trials": 8.0,
+    "first_above_threshold": [
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    "wall_seconds_per_seed": [
+      1355,
+      1295,
+      1427,
+      1164,
+      836
+    ]
+  },
+  "arm_B": {
+    "label": "without progress_series in LLM prompt (AR_DISABLE_PROGRESS_SERIES=1)",
+    "best_per_seed": [
+      0.551818,
+      0.581364,
+      0.53,
+      0.586364,
+      0.553791
+    ],
+    "mean_best": 0.5606674,
+    "median_best": 0.553791,
+    "std_best": 0.02320964607226916,
+    "n_successful_trials_per_seed": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "mean_successful_trials": 8.0,
+    "first_above_threshold": [
+      0,
+      0,
+      6,
+      0,
+      2
+    ],
+    "wall_seconds_per_seed": [
+      1635,
+      1117,
+      1088,
+      1353,
+      1175
+    ]
+  },
+  "paired_difference": {
+    "diff_per_seed": [
+      0.04981799999999992,
+      -0.03590899999999997,
+      0.02272699999999994,
+      -0.027090999999999976,
+      0.06166399999999994
+    ],
+    "mean_diff": 0.014241799999999971,
+    "median_diff": 0.02272699999999994,
+    "std_diff": 0.04418719490644315,
+    "ci_95_t": [
+      -0.04061505332225002,
+      0.06909865332224996
+    ],
+    "ci_95_bootstrap": [
+      -0.020654599999999988,
+      0.04913819999999993
+    ],
+    "wilcoxon": {
+      "n": 5,
+      "W_pos": 10.0,
+      "W_neg": 5.0,
+      "W": 5.0,
+      "p_value": 0.625,
+      "p_method": "exact-enumeration"
+    }
+  },
+  "raw_cells": {
+    "A": [
+      {
+        "arm": "A",
+        "seed": 1,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.601636,
+        "first_above_threshold_iter": 1,
+        "wall_seconds": 1355,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.5
+          },
+          {
+            "iter": 1,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.601636
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.492727
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.483636
+          },
+          {
+            "iter": 4,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.537273
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.530455
+          },
+          {
+            "iter": 6,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.42
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.520909
+          }
+        ]
+      },
+      {
+        "arm": "A",
+        "seed": 2,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.545455,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 1295,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.515455
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.482636
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.513636
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.424545
+          },
+          {
+            "iter": 4,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.538182
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.500909
+          },
+          {
+            "iter": 6,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.545455
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.408182
+          }
+        ]
+      },
+      {
+        "arm": "A",
+        "seed": 3,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.552727,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 1427,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.52
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.406364
+          },
+          {
+            "iter": 2,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.552727
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.459091
+          },
+          {
+            "iter": 4,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.525455
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.424545
+          },
+          {
+            "iter": 6,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.520909
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.519091
+          }
+        ]
+      },
+      {
+        "arm": "A",
+        "seed": 4,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.559273,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 1164,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.504545
+          },
+          {
+            "iter": 1,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.524545
+          },
+          {
+            "iter": 2,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.559273
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.517273
+          },
+          {
+            "iter": 4,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.520909
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.392727
+          },
+          {
+            "iter": 6,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.504545
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.409091
+          }
+        ]
+      },
+      {
+        "arm": "A",
+        "seed": 5,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.615455,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 836,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.521818
+          },
+          {
+            "iter": 1,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.555455
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.525455
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.526364
+          },
+          {
+            "iter": 4,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.615455
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.525455
+          },
+          {
+            "iter": 6,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.512727
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.501818
+          }
+        ]
+      }
+    ],
+    "B": [
+      {
+        "arm": "B",
+        "seed": 1,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.551818,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 1635,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.503636
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.43
+          },
+          {
+            "iter": 2,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.520455
+          },
+          {
+            "iter": 3,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.551818
+          },
+          {
+            "iter": 4,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.524091
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.513636
+          },
+          {
+            "iter": 6,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.505455
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.548636
+          }
+        ]
+      },
+      {
+        "arm": "B",
+        "seed": 2,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.581364,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 1117,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.510909
+          },
+          {
+            "iter": 1,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.533636
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.519545
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.400455
+          },
+          {
+            "iter": 4,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.581364
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.418182
+          },
+          {
+            "iter": 6,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.568636
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.41
+          }
+        ]
+      },
+      {
+        "arm": "B",
+        "seed": 3,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.53,
+        "first_above_threshold_iter": 6,
+        "wall_seconds": 1088,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.496364
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.409091
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.490909
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.426364
+          },
+          {
+            "iter": 4,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.495909
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.265455
+          },
+          {
+            "iter": 6,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.53
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.411818
+          }
+        ]
+      },
+      {
+        "arm": "B",
+        "seed": 4,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.586364,
+        "first_above_threshold_iter": 0,
+        "wall_seconds": 1353,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.526364
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.51
+          },
+          {
+            "iter": 2,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.42
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.190909
+          },
+          {
+            "iter": 4,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.468182
+          },
+          {
+            "iter": 5,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.535909
+          },
+          {
+            "iter": 6,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.491364
+          },
+          {
+            "iter": 7,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.586364
+          }
+        ]
+      },
+      {
+        "arm": "B",
+        "seed": 5,
+        "n_rows": 8,
+        "n_successful": 8,
+        "best_eval_score": 0.553791,
+        "first_above_threshold_iter": 2,
+        "wall_seconds": 1175,
+        "per_iter": [
+          {
+            "iter": 0,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.494545
+          },
+          {
+            "iter": 1,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.321818
+          },
+          {
+            "iter": 2,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.528182
+          },
+          {
+            "iter": 3,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.409091
+          },
+          {
+            "iter": 4,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.42
+          },
+          {
+            "iter": 5,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.406364
+          },
+          {
+            "iter": 6,
+            "status": "keep",
+            "decision": "keep",
+            "eval_score": 0.553791
+          },
+          {
+            "iter": 7,
+            "status": "discard",
+            "decision": "discard",
+            "eval_score": 0.523636
+          }
+        ]
+      }
+    ]
+  }
+}

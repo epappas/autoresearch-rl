@@ -1,0 +1,8 @@
+[start] B_seed2 at 2026-04-30T20:38:29+02:00 commit=f49b61d03f88711f50a98be38bfd340efbe5fecb
+[WARN] budget_exceeds_wall (comparability.expected_budget_s): expected_budget_s=28800 exceeds controller.max_wall_time_s=3600; runs will be cut short before budget is reached
+{
+  "iterations": 4,
+  "best_value": 0.547273,
+  "best_score": -0.547273
+}
+[end] B_seed2 at 2026-04-30T20:48:45+02:00 rc=0
